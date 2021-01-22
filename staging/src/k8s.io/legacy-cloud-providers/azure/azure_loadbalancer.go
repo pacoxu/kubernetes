@@ -101,7 +101,7 @@ const (
 
 	// ServiceAnnotationLoadBalancerDisableTCPReset is the annotation used on the service
 	// to set enableTcpReset to false in load balancer rule. This only works for Azure standard load balancer backed service.
-	// TODO(feiskyer): disable-tcp-reset annotations has been depracated since v1.18, it would removed on v1.20.
+	// TODO: disable-tcp-reset annotations has been removed on v1.20, the warning should be removed in 1.22
 	ServiceAnnotationLoadBalancerDisableTCPReset = "service.beta.kubernetes.io/azure-load-balancer-disable-tcp-reset"
 
 	// ServiceAnnotationLoadBalancerHealthProbeProtocol determines the network protocol that the load balancer health probe use.
