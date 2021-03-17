@@ -137,13 +137,12 @@ func (hk *HollowKubelet) Run() {
 
 // HollowKubletOptions contains settable parameters for hollow kubelet.
 type HollowKubletOptions struct {
-	NodeName            string
-	KubeletPort         int
-	KubeletReadOnlyPort int
-	MaxPods             int
-	PodsPerCore         int
-	NodeLabels          map[string]string
-	RegisterWithTaints  []core.Taint
+	NodeName           string
+	KubeletPort        int
+	MaxPods            int
+	PodsPerCore        int
+	NodeLabels         map[string]string
+	RegisterWithTaints []core.Taint
 }
 
 // Builds a KubeletConfiguration for the HollowKubelet, ensuring that the
@@ -177,7 +176,7 @@ func GetHollowKubeletConfig(opt *HollowKubletOptions) (*options.KubeletFlags, *k
 	c.EnableServer = true
 	c.Address = "0.0.0.0" /* bind address */
 	c.Port = int32(opt.KubeletPort)
-	c.ReadOnlyPort = int32(opt.KubeletReadOnlyPort)
+	c.ReadOnlyPort = 0
 	c.StaticPodPath = podFilePath
 	c.FileCheckFrequency.Duration = 20 * time.Second
 	c.HTTPCheckFrequency.Duration = 20 * time.Second

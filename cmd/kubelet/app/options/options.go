@@ -33,7 +33,6 @@ import (
 	"k8s.io/kubelet/config/v1beta1"
 	kubeletapis "k8s.io/kubelet/pkg/apis"
 	"k8s.io/kubernetes/pkg/apis/core"
-	"k8s.io/kubernetes/pkg/cluster/ports"
 	"k8s.io/kubernetes/pkg/features"
 	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
 	kubeletscheme "k8s.io/kubernetes/pkg/kubelet/apis/config/scheme"
@@ -257,8 +256,6 @@ func applyLegacyDefaults(kc *kubeletconfig.KubeletConfiguration) {
 	kc.Authentication.Webhook.Enabled = false
 	// --authorization-mode
 	kc.Authorization.Mode = kubeletconfig.KubeletAuthorizationModeAlwaysAllow
-	// --read-only-port
-	kc.ReadOnlyPort = ports.KubeletReadOnlyPort
 }
 
 // KubeletServer encapsulates all of the parameters necessary for starting up

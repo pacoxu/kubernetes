@@ -59,7 +59,6 @@ import (
 type hollowNodeConfig struct {
 	KubeconfigPath       string
 	KubeletPort          int
-	KubeletReadOnlyPort  int
 	Morph                string
 	NodeName             string
 	ServerPort           int
@@ -86,7 +85,6 @@ var knownMorphs = sets.NewString("kubelet", "proxy")
 func (c *hollowNodeConfig) addFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.KubeconfigPath, "kubeconfig", "/kubeconfig/kubeconfig", "Path to kubeconfig file.")
 	fs.IntVar(&c.KubeletPort, "kubelet-port", ports.KubeletPort, "Port on which HollowKubelet should be listening.")
-	fs.IntVar(&c.KubeletReadOnlyPort, "kubelet-read-only-port", ports.KubeletReadOnlyPort, "Read-only port on which Kubelet is listening.")
 	fs.StringVar(&c.NodeName, "name", "fake-node", "Name of this Hollow Node.")
 	fs.IntVar(&c.ServerPort, "api-server-port", 443, "Port on which API server is listening.")
 	fs.StringVar(&c.Morph, "morph", "", fmt.Sprintf("Specifies into which Hollow component this binary should morph. Allowed values: %v", knownMorphs.List()))
@@ -120,13 +118,12 @@ func (c *hollowNodeConfig) createClientConfigFromFile() (*restclient.Config, err
 
 func (c *hollowNodeConfig) createHollowKubeletOptions() *kubemark.HollowKubletOptions {
 	return &kubemark.HollowKubletOptions{
-		NodeName:            c.NodeName,
-		KubeletPort:         c.KubeletPort,
-		KubeletReadOnlyPort: c.KubeletReadOnlyPort,
-		MaxPods:             c.MaxPods,
-		PodsPerCore:         podsPerCore,
-		NodeLabels:          c.NodeLabels,
-		RegisterWithTaints:  c.RegisterWithTaints,
+		NodeName:           c.NodeName,
+		KubeletPort:        c.KubeletPort,
+		MaxPods:            c.MaxPods,
+		PodsPerCore:        podsPerCore,
+		NodeLabels:         c.NodeLabels,
+		RegisterWithTaints: c.RegisterWithTaints,
 	}
 }
 

@@ -19,10 +19,8 @@ package e2enode
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os/exec"
 	"regexp"
@@ -75,36 +73,8 @@ const (
 	kubeletHealthCheckURL      = "http://127.0.0.1:" + kubeletHealthCheckPort + "/healthz"
 )
 
-func getNodeSummary() (*stats.Summary, error) {
-	kubeletConfig, err := getCurrentKubeletConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current kubelet config")
-	}
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s:%d/stats/summary", kubeletConfig.Address, kubeletConfig.ReadOnlyPort), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build http request: %v", err)
-	}
-	req.Header.Add("Accept", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get /stats/summary: %v", err)
-	}
-
-	defer resp.Body.Close()
-	contentsBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read /stats/summary: %+v", resp)
-	}
-
-	decoder := json.NewDecoder(strings.NewReader(string(contentsBytes)))
-	summary := stats.Summary{}
-	err = decoder.Decode(&summary)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse /stats/summary to go struct: %+v", resp)
-	}
-	return &summary, nil
+func getNodeSummary(f *framework.Framework) (*stats.Summary, error) {
+	return e2ekubelet.GetStatsSummary(f.ClientSet, framework.TestContext.NodeName)
 }
 
 func getV1alpha1NodeDevices() (*kubeletpodresourcesv1alpha1.ListPodResourcesResponse, error) {

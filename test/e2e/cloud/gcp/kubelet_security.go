@@ -23,7 +23,6 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/kubernetes/pkg/cluster/ports"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2ekubelet "k8s.io/kubernetes/test/e2e/framework/kubelet"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
@@ -45,8 +44,8 @@ var _ = SIGDescribe("Ports Security Check [Feature:KubeletSecurity]", func() {
 	})
 
 	// make sure kubelet readonly (10255) and cadvisor (4194) ports are disabled via API server proxy
-	ginkgo.It(fmt.Sprintf("should not be able to proxy to the readonly kubelet port %v using proxy subresource", ports.KubeletReadOnlyPort), func() {
-		result, err := e2ekubelet.ProxyRequest(f.ClientSet, nodeName, "pods/", ports.KubeletReadOnlyPort)
+	ginkgo.It(fmt.Sprintf("should not be able to proxy to the readonly kubelet port 10255 using proxy subresource"), func() {
+		result, err := e2ekubelet.ProxyRequest(f.ClientSet, nodeName, "pods/", 10255)
 		framework.ExpectNoError(err)
 
 		var statusCode int
@@ -63,7 +62,7 @@ var _ = SIGDescribe("Ports Security Check [Feature:KubeletSecurity]", func() {
 	})
 
 	// make sure kubelet readonly (10255) and cadvisor (4194) ports are closed on the public IP address
-	disabledPorts := []int{ports.KubeletReadOnlyPort, 4194}
+	disabledPorts := []int{10255, 4194}
 	for _, port := range disabledPorts {
 		ginkgo.It(fmt.Sprintf("should not have port %d open on its all public IP addresses", port), func() {
 			portClosedTest(f, node, port)

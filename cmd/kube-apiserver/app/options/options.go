@@ -121,7 +121,7 @@ func NewServerRunOptions() *ServerRunOptions {
 		IdentityLeaseRenewIntervalSeconds: 10,
 		KubeletConfig: kubeletclient.KubeletClientConfig{
 			Port:         ports.KubeletPort,
-			ReadOnlyPort: ports.KubeletReadOnlyPort,
+			ReadOnlyPort: 0,
 			PreferredAddressTypes: []string{
 				// --override-hostname
 				string(api.NodeHostName),
