@@ -44,6 +44,7 @@ rc=0
 # List of dependencies we need to avoid dragging back into kubernetes/kubernetes
 forbidden_repos=(
   "k8s.io/klog"  # we have switched to klog v2, so avoid klog v1
+  "github.com/influxdata/influxdb1-client"
 )
 for forbidden_repo in "${forbidden_repos[@]}"; do
   deps_on_forbidden=$(go mod graph | grep " ${forbidden_repo}@" || echo "")

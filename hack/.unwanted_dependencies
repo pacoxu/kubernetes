@@ -1,0 +1,6 @@
+github.com/go-kit/kit
+github.com/go-openapi/analysis
+github.com/go-openapi/spec
+github.com/go-openapi/strfmt
+github.com/go-openapi/validate
+go.mongodb.org/mongo-driver
