@@ -367,40 +367,49 @@ func (m *ManagerImpl) isVersionCompatibleWithPlugin(versions []string) bool {
 	return false
 }
 
+func (m *ManagerImpl) getOrCreateDevicesToReuse(currentPodUID string) map[string]sets.String {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	if _, ok := m.devicesToReuse[currentPodUID]; !ok {
+		if m.devicesToReuse == nil {
+			m.devicesToReuse = make(PodReusableDevices)
+		}
+		m.devicesToReuse[currentPodUID] = make(map[string]sets.String)
+	}
+	// If pod entries to m.devicesToReuse other than the current pod exist, delete them.
+	for podUID := range m.devicesToReuse {
+		if podUID != currentPodUID {
+			delete(m.devicesToReuse, podUID)
+		}
+	}
+	return m.devicesToReuse[currentPodUID]
+}
+
 // Allocate is the call that you can use to allocate a set of devices
 // from the registered device plugins.
 func (m *ManagerImpl) Allocate(pod *v1.Pod, container *v1.Container) error {
+	// Allocate resources for init containers first as we know the caller always loops
+	// through init containers before looping through app containers. Should the caller
+	// ever change those semantics, this logic will need to be amended.
+	deviceToReuse := m.getOrCreateDevicesToReuse(string(pod.UID))
 	// The pod is during the admission phase. We need to save the pod to avoid it
 	// being cleaned before the admission ended
 	m.setPodPendingAdmission(pod)
 
-	if _, ok := m.devicesToReuse[string(pod.UID)]; !ok {
-		m.devicesToReuse[string(pod.UID)] = make(map[string]sets.String)
-	}
-	// If pod entries to m.devicesToReuse other than the current pod exist, delete them.
-	for podUID := range m.devicesToReuse {
-		if podUID != string(pod.UID) {
-			delete(m.devicesToReuse, podUID)
-		}
-	}
-	// Allocate resources for init containers first as we know the caller always loops
-	// through init containers before looping through app containers. Should the caller
-	// ever change those semantics, this logic will need to be amended.
 	for _, initContainer := range pod.Spec.InitContainers {
 		if container.Name == initContainer.Name {
-			if err := m.allocateContainerResources(pod, container, m.devicesToReuse[string(pod.UID)]); err != nil {
+			if err := m.allocateContainerResources(pod, container, deviceToReuse); err != nil {
 				return err
 			}
-			m.podDevices.addContainerAllocatedResources(string(pod.UID), container.Name, m.devicesToReuse[string(pod.UID)])
+			m.podDevices.addContainerAllocatedResources(string(pod.UID), container.Name, deviceToReuse)
 			return nil
 		}
 	}
-	if err := m.allocateContainerResources(pod, container, m.devicesToReuse[string(pod.UID)]); err != nil {
+	if err := m.allocateContainerResources(pod, container, deviceToReuse); err != nil {
 		return err
 	}
-	m.podDevices.removeContainerAllocatedResources(string(pod.UID), container.Name, m.devicesToReuse[string(pod.UID)])
+	m.podDevices.removeContainerAllocatedResources(string(pod.UID), container.Name, deviceToReuse)
 	return nil
-
 }
 
 // UpdatePluginResources updates node resources based on devices already allocated to pods.
