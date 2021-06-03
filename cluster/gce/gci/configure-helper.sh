@@ -932,7 +932,7 @@ egressSelections:
     transport:
       uds:
         udsName: /etc/srv/kubernetes/konnectivity-server/konnectivity-server.socket
-- name: master
+- name: controlplane
   connection:
     proxyProtocol: Direct
 - name: etcd
@@ -950,7 +950,7 @@ egressSelections:
     transport:
       uds:
         udsName: /etc/srv/kubernetes/konnectivity-server/konnectivity-server.socket
-- name: master
+- name: controlplane
   connection:
     proxyProtocol: Direct
 - name: etcd
