@@ -102,7 +102,6 @@ func ValidateEgressSelectorConfiguration(config *apiserver.EgressSelectorConfigu
 		}
 	}
 
-	var foundControlPlane, foundMaster bool
 	for _, service := range config.EgressSelections {
 		canonicalName := strings.ToLower(service.Name)
 
@@ -110,15 +109,6 @@ func ValidateEgressSelectorConfiguration(config *apiserver.EgressSelectorConfigu
 			allErrs = append(allErrs, field.NotSupported(field.NewPath("egressSelection", "name"), canonicalName, validEgressSelectorNames.List()))
 			continue
 		}
-
-		if canonicalName == "controlplane" {
-			foundControlPlane = true
-		}
-	}
-
-	// error if both master and controlplane egress selectors are set
-	if foundMaster && foundControlPlane {
-		allErrs = append(allErrs, field.Forbidden(field.NewPath("egressSelection", "name"), "both egressSelection names 'master' and 'controlplane' are specified, only one is allowed"))
 	}
 
 	return allErrs
