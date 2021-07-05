@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -70,6 +71,8 @@ func (config *Unwanted) checkUpdateStatus(modeGraph map[string][]string) {
 			}
 		}
 	}
+	// sort deps
+	sort.Strings(config.Status.IndirectReferences)
 }
 
 // runCommand runs the cmd and returns the combined stdout and stderr, or an
@@ -107,13 +110,13 @@ func convertToMap(modStr string) map[string][]string {
 		if len(deps) == 2 {
 			first := strings.Split(deps[0], "@")[0]
 			second := strings.Split(deps[1], "@")[0]
-			original, ok := modMap[first]
+			original, ok := modMap[second]
 			if !ok {
-				modMap[first] = []string{second}
-			} else if stringInSlice(second, original) {
+				modMap[second] = []string{first}
+			} else if stringInSlice(first, original) {
 				continue
 			} else {
-				modMap[first] = append(original, second)
+				modMap[second] = append(original, first)
 			}
 		} else {
 			// skip invalid line
@@ -169,7 +172,6 @@ func main() {
 	config.checkUpdateStatus(modeGraph)
 
 	// DeepEqual check current status with it in json file
-	// TODO sort array
 	if !reflect.DeepEqual(configFromFile.Status, config.Status) {
 		fmt.Println("Status in ./hack/unwanted-dependencies.json:\n", configFromFile.Status)
 		fmt.Println("Status detected:\n", config.Status)

@@ -17,6 +17,7 @@
   },
   "status": {
     "indirectReferences": [
+      "github.com/go-kit/kit",
       "github.com/hashicorp/hcl",
       "github.com/spf13/viper"
     ]
