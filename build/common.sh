@@ -535,7 +535,7 @@ function kube::build::run_build_command_ex() {
 
   local -a docker_run_opts=(
     "--name=${container_name}"
-    "--user=$(id -u):$(id -g)"
+    "--user=root"
     "--hostname=${HOSTNAME}"
     "${DOCKER_MOUNT_ARGS[@]}"
   )
