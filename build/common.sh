@@ -537,6 +537,7 @@ function kube::build::run_build_command_ex() {
     "--name=${container_name}"
     "--user=root"
     "--hostname=${HOSTNAME}"
+    "--device=/dev/kmsg"
     "${DOCKER_MOUNT_ARGS[@]}"
   )
 
