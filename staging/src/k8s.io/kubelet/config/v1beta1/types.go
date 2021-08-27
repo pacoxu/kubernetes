@@ -601,7 +601,7 @@ type KubeletConfiguration struct {
 	// the node is recommended before changing this field.
 	// Default: "/etc/resolv.conf"
 	// +optional
-	ResolverConfig string `json:"resolvConf,omitempty"`
+	ResolverConfig *string `json:"resolvConf,omitempty"`
 	// runOnce causes the Kubelet to check the API server once for pods,
 	// run those in addition to the pods specified by static pod files, and exit.
 	// Default: false
