@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -218,7 +219,7 @@ func printTable(table *metav1.Table, output io.Writer, options PrintOptions) err
 						truncated = true
 						print = print[:newline]
 					}
-					fmt.Fprint(output, print)
+					fmt.Fprint(output, strconv.QuoteToASCII(string(print)))
 					if truncated {
 						fmt.Fprint(output, "...")
 					}
