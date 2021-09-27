@@ -1321,15 +1321,17 @@ func parseResourceList(m map[string]string) (v1.ResourceList, error) {
 	for k, v := range m {
 		switch v1.ResourceName(k) {
 		// CPU, memory, local storage, and PID resources are supported.
-		case v1.ResourceCPU, v1.ResourceMemory, v1.ResourceEphemeralStorage, pidlimit.PIDs:
-			q, err := resource.ParseQuantity(v)
-			if err != nil {
-				return nil, err
+		case v1.ResourceCPU, v1.ResourceMemory, v1.ResourceEphemeralStorage, pidlimit.PIDs, v1.ResourceSwap:
+			if v1.ResourceName(k) != v1.ResourceSwap || utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
+				q, err := resource.ParseQuantity(v)
+				if err != nil {
+					return nil, err
+				}
+				if q.Sign() == -1 {
+					return nil, fmt.Errorf("resource quantity for %q cannot be negative: %v", k, v)
+				}
+				rl[v1.ResourceName(k)] = q
 			}
-			if q.Sign() == -1 {
-				return nil, fmt.Errorf("resource quantity for %q cannot be negative: %v", k, v)
-			}
-			rl[v1.ResourceName(k)] = q
 		default:
 			return nil, fmt.Errorf("cannot reserve %q resource", k)
 		}
