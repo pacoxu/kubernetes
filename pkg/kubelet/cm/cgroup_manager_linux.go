@@ -280,6 +280,9 @@ func (m *cgroupManagerImpl) Exists(name CgroupName) bool {
 	// in https://github.com/opencontainers/runc/issues/1440
 	// once resolved, we can remove this code.
 	allowlistControllers := sets.NewString("cpu", "cpuacct", "cpuset", "memory", "systemd", "pids")
+	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.NodeSwap) {
+		allowlistControllers.Insert("swap")
+	}
 
 	if _, ok := m.subsystems.MountPoints["hugetlb"]; ok {
 		allowlistControllers.Insert("hugetlb")
