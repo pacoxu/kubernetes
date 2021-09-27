@@ -306,6 +306,7 @@ func MachineInfo(nodeName string,
 			node.Status.NodeInfo.MachineID = info.MachineID
 			node.Status.NodeInfo.SystemUUID = info.SystemUUID
 
+			// TODO(pacoxu) init swap size: currently cadvisor has no swap info
 			for rName, rCap := range cadvisor.CapacityFromMachineInfo(info) {
 				node.Status.Capacity[rName] = rCap
 			}
@@ -336,6 +337,10 @@ func MachineInfo(nodeName string,
 						node.Status.Capacity[v1.ResourceEphemeralStorage] = v
 					}
 				}
+			}
+
+			if utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
+				node.Status.Capacity[v1.ResourceSwap] = getSwapCapicty()
 			}
 
 			devicePluginCapacity, devicePluginAllocatable, removedDevicePlugins = devicePluginResourceCapacityFunc()

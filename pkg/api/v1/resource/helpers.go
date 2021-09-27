@@ -136,6 +136,11 @@ func GetResourceRequestQuantity(pod *v1.Pod, resourceName v1.ResourceName) resou
 		return requestQuantity
 	}
 
+	if resourceName == v1.ResourceSwap {
+		//TODO (pacoxu) currently, pod swap setting is not supported
+		return requestQuantity
+	}
+
 	for _, container := range pod.Spec.Containers {
 		if rQuantity, ok := container.Resources.Requests[resourceName]; ok {
 			requestQuantity.Add(rQuantity)
