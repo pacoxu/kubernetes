@@ -689,6 +689,7 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 		if err != nil {
 			return fmt.Errorf("--system-reserved value failed to parse: %w", err)
 		}
+
 		var hardEvictionThresholds []evictionapi.Threshold
 		// If the user requested to ignore eviction thresholds, then do not set valid values for hardEvictionThresholds here.
 		if !s.ExperimentalNodeAllocatableIgnoreEvictionThreshold {
@@ -1261,16 +1262,19 @@ func parseResourceList(m map[string]string) (v1.ResourceList, error) {
 	rl := make(v1.ResourceList)
 	for k, v := range m {
 		switch v1.ResourceName(k) {
-		// CPU, memory, local storage, and PID resources are supported.
-		case v1.ResourceCPU, v1.ResourceMemory, v1.ResourceEphemeralStorage, pidlimit.PIDs:
-			q, err := resource.ParseQuantity(v)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse quantity %q for %q resource: %w", v, k, err)
+		// CPU, memory, local storage, swap, and PID resources are supported.
+		case v1.ResourceCPU, v1.ResourceMemory, v1.ResourceEphemeralStorage, pidlimit.PIDs, v1.ResourceSwap:
+			if v1.ResourceName(k) != v1.ResourceSwap || utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
+				q, err := resource.ParseQuantity(v)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse quantity %q for %q resource: %w", v, k, err)
+				}
+				if q.Sign() == -1 {
+					return nil, fmt.Errorf("resource quantity for %q cannot be negative: %v", k, v)
+				}
+				rl[v1.ResourceName(k)] = q
+>>>>>>> 3e62fd2b040 (feat: add --system-reserved support for swap)
 			}
-			if q.Sign() == -1 {
-				return nil, fmt.Errorf("resource quantity for %q cannot be negative: %v", k, v)
-			}
-			rl[v1.ResourceName(k)] = q
 		default:
 			return nil, fmt.Errorf("cannot reserve %q resource", k)
 		}
