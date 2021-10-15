@@ -25,6 +25,7 @@ import (
 	"time"
 
 	cadvisorapiv1 "github.com/google/cadvisor/info/v1"
+	"github.com/google/cadvisor/machine"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -338,6 +339,18 @@ func MachineInfo(nodeName string,
 				}
 			}
 
+			// if swap are enabled, we report them as a schedulable resource on the node
+			if utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
+				swapCapacity, err := machine.GetMachineSwapCapacity()
+				if err != nil {
+					klog.ErrorS(err, "Failed to get swap capacity cannot found")
+				} else {
+					node.Status.Capacity[v1.ResourceSwap] = *resource.NewQuantity(
+						int64(swapCapacity),
+						resource.BinarySI)
+				}
+			}
+
 			devicePluginCapacity, devicePluginAllocatable, removedDevicePlugins = devicePluginResourceCapacityFunc()
 			for k, v := range devicePluginCapacity {
 				if old, ok := node.Status.Capacity[k]; !ok || old.Value() != v.Value() {
@@ -518,6 +531,9 @@ func ReadyCondition(
 		requiredCapacities := []v1.ResourceName{v1.ResourceCPU, v1.ResourceMemory, v1.ResourcePods}
 		if utilfeature.DefaultFeatureGate.Enabled(features.LocalStorageCapacityIsolation) {
 			requiredCapacities = append(requiredCapacities, v1.ResourceEphemeralStorage)
+		}
+		if utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
+			requiredCapacities = append(requiredCapacities, v1.ResourceSwap)
 		}
 		missingCapacities := []string{}
 		for _, resource := range requiredCapacities {

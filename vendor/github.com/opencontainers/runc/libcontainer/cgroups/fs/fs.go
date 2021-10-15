@@ -1,4 +1,3 @@
-//go:build linux
 // +build linux
 
 package fs
@@ -22,7 +21,6 @@ var (
 		&CpusetGroup{},
 		&DevicesGroup{},
 		&MemoryGroup{},
-		// TODO add swap group
 		&CpuGroup{},
 		&CpuacctGroup{},
 		&PidsGroup{},
