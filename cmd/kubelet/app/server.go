@@ -720,6 +720,7 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 		if err != nil {
 			return err
 		}
+
 		var hardEvictionThresholds []evictionapi.Threshold
 		// If the user requested to ignore eviction thresholds, then do not set valid values for hardEvictionThresholds here.
 		if !s.ExperimentalNodeAllocatableIgnoreEvictionThreshold {
@@ -1317,7 +1318,7 @@ func parseResourceList(m map[string]string) (v1.ResourceList, error) {
 	rl := make(v1.ResourceList)
 	for k, v := range m {
 		switch v1.ResourceName(k) {
-		// CPU, memory, local storage, and PID resources are supported.
+		// CPU, memory, local storage, swap, and PID resources are supported.
 		case v1.ResourceCPU, v1.ResourceMemory, v1.ResourceEphemeralStorage, pidlimit.PIDs, v1.ResourceSwap:
 			if v1.ResourceName(k) != v1.ResourceSwap || utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
 				q, err := resource.ParseQuantity(v)
