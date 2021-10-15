@@ -25,6 +25,7 @@ import (
 	"time"
 
 	cadvisorapiv1 "github.com/google/cadvisor/info/v1"
+	"github.com/google/cadvisor/machine"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -335,6 +336,20 @@ func MachineInfo(nodeName string,
 					if v, exists := initialCapacity[v1.ResourceEphemeralStorage]; exists {
 						node.Status.Capacity[v1.ResourceEphemeralStorage] = v
 					}
+				}
+			}
+
+			// if swap are enabled, we report them as a schedulable resource on the node
+			if utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
+				swapCapacity, err := machine.GetMachineSwapCapacity()
+				//TODO delete debug log
+				klog.ErrorS(nil, "Get swap capacity", "capacity", swapCapacity)
+				if err != nil {
+					klog.ErrorS(err, "Failed to get swap capacity cannot found")
+				} else {
+					node.Status.Capacity[v1.ResourceSwap] = *resource.NewQuantity(
+						int64(swapCapacity),
+						resource.BinarySI)
 				}
 			}
 
