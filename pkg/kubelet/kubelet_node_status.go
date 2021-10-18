@@ -182,13 +182,13 @@ func (kl *Kubelet) reconcileSwapResource(initialNode, existingNode *v1.Node) boo
 
 	initialAllocatable := initialNode.Status.Allocatable[v1.ResourceSwap]
 
-	capacity, resourceIsSupported := existingNode.Status.Capacity[v1.ResourceSwap]
+	capacity, resourceIsCapacity := existingNode.Status.Capacity[v1.ResourceSwap]
 	allocatable := existingNode.Status.Allocatable[v1.ResourceSwap]
 
-	if resourceIsSupported && !utilfeature.DefaultFeatureGate.Enabled(kubefeatures.NodeSwap) {
+	if resourceIsCapacity && !utilfeature.DefaultFeatureGate.Enabled(kubefeatures.NodeSwap) {
 		delete(existingNode.Status.Capacity, v1.ResourceSwap)
 		delete(existingNode.Status.Allocatable, v1.ResourceSwap)
-		klog.InfoS("Removing swap resource which is no longer supported", "resourceName", v1.ResourceSwap)
+		klog.InfoS("Removing swap resource if feature gate NodeSwap is disabled", "resourceName", v1.ResourceSwap)
 		requiresUpdate = true
 	}
 
