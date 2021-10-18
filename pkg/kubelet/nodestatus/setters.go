@@ -25,7 +25,6 @@ import (
 	"time"
 
 	cadvisorapiv1 "github.com/google/cadvisor/info/v1"
-	"github.com/google/cadvisor/machine"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -307,6 +306,7 @@ func MachineInfo(nodeName string,
 			node.Status.NodeInfo.MachineID = info.MachineID
 			node.Status.NodeInfo.SystemUUID = info.SystemUUID
 
+			// TODO(pacoxu) init swap size: currently cadvisor has no swap info
 			for rName, rCap := range cadvisor.CapacityFromMachineInfo(info) {
 				node.Status.Capacity[rName] = rCap
 			}
@@ -336,18 +336,6 @@ func MachineInfo(nodeName string,
 					if v, exists := initialCapacity[v1.ResourceEphemeralStorage]; exists {
 						node.Status.Capacity[v1.ResourceEphemeralStorage] = v
 					}
-				}
-			}
-
-			// if swap are enabled, we report them as a schedulable resource on the node
-			if utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
-				swapCapacity, err := machine.GetMachineSwapCapacity()
-				if err != nil {
-					klog.ErrorS(err, "Failed to get swap capacity cannot found")
-				} else {
-					node.Status.Capacity[v1.ResourceSwap] = *resource.NewQuantity(
-						int64(swapCapacity),
-						resource.BinarySI)
 				}
 			}
 
@@ -532,9 +520,10 @@ func ReadyCondition(
 		if utilfeature.DefaultFeatureGate.Enabled(features.LocalStorageCapacityIsolation) {
 			requiredCapacities = append(requiredCapacities, v1.ResourceEphemeralStorage)
 		}
-		if utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
-			requiredCapacities = append(requiredCapacities, v1.ResourceSwap)
-		}
+		// TODO(pacoxu) Swap can be required if static pod use it to do some swap limitation later
+		// if utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
+		// 	requiredCapacities = append(requiredCapacities, v1.ResourceSwap)
+		// }
 		missingCapacities := []string{}
 		for _, resource := range requiredCapacities {
 			if _, found := node.Status.Capacity[resource]; !found {
