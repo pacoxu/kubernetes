@@ -339,6 +339,10 @@ func MachineInfo(nodeName string,
 				}
 			}
 
+			if utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
+				node.Status.Capacity[v1.ResourceSwap] = getSwapCapicty()
+			}
+
 			devicePluginCapacity, devicePluginAllocatable, removedDevicePlugins = devicePluginResourceCapacityFunc()
 			for k, v := range devicePluginCapacity {
 				if old, ok := node.Status.Capacity[k]; !ok || old.Value() != v.Value() {
@@ -520,10 +524,6 @@ func ReadyCondition(
 		if utilfeature.DefaultFeatureGate.Enabled(features.LocalStorageCapacityIsolation) {
 			requiredCapacities = append(requiredCapacities, v1.ResourceEphemeralStorage)
 		}
-		// TODO(pacoxu) Swap can be required if static pod use it to do some swap limitation later
-		// if utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
-		// 	requiredCapacities = append(requiredCapacities, v1.ResourceSwap)
-		// }
 		missingCapacities := []string{}
 		for _, resource := range requiredCapacities {
 			if _, found := node.Status.Capacity[resource]; !found {
