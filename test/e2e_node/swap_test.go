@@ -85,7 +85,7 @@ func runSystemReservedSwapTests(f *framework.Framework) {
 
 func setupSwap(path string) error {
 	// will allocate 512M on given path
-	newDirCommand := fmt.Sprintf("dd if=/dev/zero of=%s bs=1M count=%d", path, 512)
+	newDirCommand := fmt.Sprintf("dd if=/dev/zero of=%s bs=1M count=%d", path, totalSwapSize)
 	mkswapCommand := fmt.Sprintf("mkswap %s", path)
 	swapOnCommand := fmt.Sprintf("swapon %s", path)
 	if err := exec.Command("/bin/sh", "-c",
