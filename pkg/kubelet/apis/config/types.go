@@ -360,7 +360,7 @@ type KubeletConfiguration struct {
 
 	// A set of ResourceName=ResourceQuantity (e.g. cpu=200m,memory=150G,ephemeral-storage=1G,pid=100) pairs
 	// that describe resources reserved for non-kubernetes components.
-	// Currently only cpu, memory, local ephemeral storage for root file system, pid (process IDs), and swap are supported
+	// Currently only cpu, memory, local ephemeral storage for root file system, pid (process IDs) and swap are supported
 	// Since 1.22, swap is supported when NodeSwap is enabled
 	// See http://kubernetes.io/docs/user-guide/compute-resources for more detail.
 	SystemReserved map[string]string
