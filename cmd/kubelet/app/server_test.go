@@ -41,9 +41,19 @@ func TestValueOfAllocatableResources(t *testing.T) {
 		},
 		{
 			kubeReserved:   map[string]string{"cpu": "200m", "memory": "15G", "ephemeral-storage": "10Gi", "pid": "10000"},
-			systemReserved: map[string]string{"cpu": "200m", "memory": "15Ki", "swap": "100m"},
+			systemReserved: map[string]string{"cpu": "200m", "memory": "15Ki"},
 			errorExpected:  false,
-			name:           "Valid resource quantity",
+			name:           "valid resource quantity",
+		},
+		{
+			systemReserved: map[string]string{"swap": "-100m"},
+			errorExpected:  false,
+			name:           "invalid swap",
+		},
+		{
+			systemReserved: map[string]string{"swap": "100m"},
+			errorExpected:  false,
+			name:           "valid swap",
 		},
 	}
 

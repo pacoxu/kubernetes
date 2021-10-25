@@ -74,12 +74,11 @@ func runSystemReservedSwapTests(f *framework.Framework) {
 		framework.ExpectNoError(err)
 		// Assuming that there is only one node, because this is a node e2e test.
 		framework.ExpectEqual(len(nodeList.Items), 1)
-		// TODO (jonyhy96) use Swap in ResourceList when supported
-		allocateble := nodeList.Items[0].Status.Allocatable[v1.ResourceSwap]
-		capacity := nodeList.Items[0].Status.Capacity[v1.ResourceSwap]
+		allocateble := nodeList.Items[0].Status.Allocatable.Swap()
+		capacity := nodeList.Items[0].Status.Capacity.Swap()
 		reserved := resource.MustParse(reservedSwapSize)
-		reserved.Add(allocateble)
-		framework.ExpectEqual(reserved.Cmp(capacity), 0)
+		reserved.Add(*allocateble)
+		framework.ExpectEqual(reserved.Cmp(*capacity), 0)
 	})
 }
 

@@ -174,22 +174,19 @@ func (kl *Kubelet) reconcileHugePageResource(initialNode, existingNode *v1.Node)
 	return requiresUpdate
 }
 
-// reconcileSwapResource will update swap capacity and remove swap size no longer supported
+// reconcileSwapResource will update swap capacity and remove swap if the feature is disabled
 func (kl *Kubelet) reconcileSwapResource(initialNode, existingNode *v1.Node) bool {
-	requiresUpdate := updateDefaultResources(initialNode, existingNode)
-	initialCapacity := initialNode.Status.Capacity[v1.ResourceSwap]
-
-	initialAllocatable := initialNode.Status.Allocatable[v1.ResourceSwap]
-
-	capacity, resourceIsCapacity := existingNode.Status.Capacity[v1.ResourceSwap]
-	allocatable := existingNode.Status.Allocatable[v1.ResourceSwap]
-
-	if resourceIsCapacity && !utilfeature.DefaultFeatureGate.Enabled(kubefeatures.NodeSwap) {
+	capacity, found := existingNode.Status.Capacity[v1.ResourceSwap]
+	if found && !utilfeature.DefaultFeatureGate.Enabled(kubefeatures.NodeSwap) {
 		delete(existingNode.Status.Capacity, v1.ResourceSwap)
 		delete(existingNode.Status.Allocatable, v1.ResourceSwap)
-		klog.InfoS("Removing swap resource if feature gate NodeSwap is disabled", "resourceName", v1.ResourceSwap)
-		requiresUpdate = true
+		klog.InfoS("Removing swap resource from node object since feature gate NodeSwap is disabled")
+		return true
 	}
+
+	requiresUpdate := updateDefaultResources(initialNode, existingNode)
+	initialCapacity := initialNode.Status.Capacity[v1.ResourceSwap]
+	initialAllocatable := initialNode.Status.Allocatable[v1.ResourceSwap]
 
 	// Add or update capacity if it the size was previously unsupported or has changed
 	if capacity.Cmp(initialCapacity) != 0 {
@@ -197,6 +194,7 @@ func (kl *Kubelet) reconcileSwapResource(initialNode, existingNode *v1.Node) boo
 		requiresUpdate = true
 	}
 
+	allocatable := existingNode.Status.Allocatable[v1.ResourceSwap]
 	// Add or update allocatable if it the size was previously unsupported or has changed
 	if allocatable.Cmp(initialAllocatable) != 0 {
 		existingNode.Status.Allocatable[v1.ResourceSwap] = initialAllocatable.DeepCopy()

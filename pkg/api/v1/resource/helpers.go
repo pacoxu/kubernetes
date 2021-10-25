@@ -129,8 +129,8 @@ func GetResourceRequestQuantity(pod *v1.Pod, resourceName v1.ResourceName) resou
 		requestQuantity = resource.Quantity{Format: resource.DecimalSI}
 	}
 
+	// pod swap limitation is not supported and this is only for scheduling
 	if resourceName == v1.ResourceSwap {
-		//TODO (pacoxu) currently, pod swap setting is not supported
 		return requestQuantity
 	}
 
