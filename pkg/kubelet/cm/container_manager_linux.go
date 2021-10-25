@@ -256,7 +256,7 @@ func NewContainerManager(mountUtil mount.Interface, cadvisorInterface cadvisor.I
 	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.NodeSwap) {
 		swapCapacity, err := machine.GetMachineSwapCapacity()
 		if err != nil {
-			klog.ErrorS(err, "Failed to get swap capacity cannot found")
+			klog.ErrorS(err, "Failed to get swap capacity from cadvisor")
 		} else {
 			capacity[v1.ResourceSwap] = *resource.NewQuantity(
 				int64(swapCapacity),

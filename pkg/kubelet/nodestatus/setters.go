@@ -340,7 +340,7 @@ func MachineInfo(nodeName string,
 			}
 
 			if utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
-				node.Status.Capacity[v1.ResourceSwap] = getSwapCapicty()
+				node.Status.Capacity[v1.ResourceSwap] = getSwapCapacity()
 			}
 
 			devicePluginCapacity, devicePluginAllocatable, removedDevicePlugins = devicePluginResourceCapacityFunc()
