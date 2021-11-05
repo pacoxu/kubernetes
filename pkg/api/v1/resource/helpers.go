@@ -137,7 +137,6 @@ func GetResourceRequestQuantity(pod *v1.Pod, resourceName v1.ResourceName) resou
 	}
 
 	if resourceName == v1.ResourceSwap {
-		//TODO (pacoxu) currently, pod swap setting is not supported
 		return requestQuantity
 	}
 

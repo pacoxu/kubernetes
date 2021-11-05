@@ -25,10 +25,10 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func getSwapCapicty() resource.Quantity {
+func getSwapCapacity() resource.Quantity {
 	swapCapacity, err := machine.GetMachineSwapCapacity()
 	if err != nil {
-		klog.ErrorS(err, "Failed to get swap capacity cannot found")
+		klog.ErrorS(err, "Failed to get swap capacity from cadvisor")
 		return *resource.NewQuantity(
 			int64(0),
 			resource.BinarySI)

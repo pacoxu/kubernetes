@@ -21,7 +21,7 @@ package nodestatus
 
 import "k8s.io/apimachinery/pkg/api/resource"
 
-func getSwapCapicty() resource.Quantity {
+func getSwapCapacity() resource.Quantity {
 	return *resource.NewQuantity(
 		int64(0),
 		resource.BinarySI)
