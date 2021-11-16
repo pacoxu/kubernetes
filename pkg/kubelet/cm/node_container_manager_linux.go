@@ -177,6 +177,11 @@ func getCgroupConfig(rl v1.ResourceList) *ResourceConfig {
 		val := q.Value()
 		rc.Memory = &val
 	}
+	if q, exists := rl[v1.ResourceSwap]; exists {
+		val := q.Value()
+		rc.Swap = &val + rc.Memory
+	}
+
 	if q, exists := rl[v1.ResourceCPU]; exists {
 		// CPU is defined in milli-cores.
 		val := MilliCPUToShares(q.MilliValue())
@@ -186,6 +191,7 @@ func getCgroupConfig(rl v1.ResourceList) *ResourceConfig {
 		val := q.Value()
 		rc.PidsLimit = &val
 	}
+
 	rc.HugePageLimit = HugePageLimits(rl)
 
 	return &rc
