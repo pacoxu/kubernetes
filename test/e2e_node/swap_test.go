@@ -17,44 +17,45 @@ limitations under the License.
 package e2enode
 
 import (
+	"bufio"
 	"context"
 	"fmt"
-	"os/exec"
-	"time"
+	"io"
+	"io/ioutil"
+	"os"
+	"strconv"
+	"strings"
 
 	"github.com/onsi/ginkgo"
-	"github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
+	"k8s.io/kubernetes/pkg/kubelet/cm"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
 const (
-	// Dir to enable swap.
-	swapDir          = "/mnt/swap"
-	totalSwapSize    = 512 // 512Mi
-	reservedSwapSize = "256Mi"
+	reservedSwapSize      = "256Mi"
+	revervedSwapSizeBytes = 2 << 27
 )
 
 // Serial because the test updates kubelet configuration.
 var _ = SIGDescribe("System reserved swap [Serial]", func() {
-	f := framework.NewDefaultFramework("system-reserved swap test")
+	f := framework.NewDefaultFramework("system-reserved-swap")
 	ginkgo.Context("With config updated with swap reserved", func() {
-		// setup
-		ginkgo.JustBeforeEach(func() {
-			gomega.Eventually(func() error {
-				return setupSwap(swapDir)
-			}, 30*time.Second, framework.Poll).Should(gomega.BeNil())
-		})
-		// cleanup
-		ginkgo.JustAfterEach(func() {
-			gomega.Eventually(func() error {
-				return cleanupSwap(swapDir)
-			}, 30*time.Second, framework.Poll).Should(gomega.BeNil())
-		})
+		runSystemReservedSwapTests(f)
+	})
+})
+
+func runSystemReservedSwapTests(f *framework.Framework) {
+	ginkgo.It("node should not allocate reserved swap size", func() {
+		hostMemInfo, err := getHostMemInfo()
+		framework.ExpectNoError(err)
+		if hostMemInfo.swapTotal <= revervedSwapSizeBytes {
+			ginkgo.Skip("skipping test when swap is not enough on host")
+		}
 		tempSetCurrentKubeletConfig(f, func(initialConfig *kubeletconfig.KubeletConfiguration) {
 			initialConfig.FailSwapOn = false
 			initialConfig.FeatureGates[string(kubefeatures.NodeSwap)] = true
@@ -63,12 +64,6 @@ var _ = SIGDescribe("System reserved swap [Serial]", func() {
 			}
 			initialConfig.SystemReserved[string(v1.ResourceSwap)] = reservedSwapSize
 		})
-		runSystemReservedSwapTests(f)
-	})
-})
-
-func runSystemReservedSwapTests(f *framework.Framework) {
-	ginkgo.It("node should not allocate reserved swap size", func() {
 		ginkgo.By("by check node status")
 		nodeList, err := f.ClientSet.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 		framework.ExpectNoError(err)
@@ -79,25 +74,75 @@ func runSystemReservedSwapTests(f *framework.Framework) {
 		reserved := resource.MustParse(reservedSwapSize)
 		reserved.Add(*allocateble)
 		framework.ExpectEqual(reserved.Cmp(*capacity), 0)
+		// check cgroup limit
+		limitsize, unified, err := getCgroupLimit()
+		framework.ExpectNoError(err)
+		if unified {
+			framework.ExpectEqual(hostMemInfo.swapTotal-revervedSwapSizeBytes, limitsize, "total swap - systemreserved swap = cgourpv2 swap limit")
+		} else {
+			framework.ExpectEqual(hostMemInfo.swapTotal-revervedSwapSizeBytes, limitsize-hostMemInfo.memTotal, "total swap - systemreserved swap = cgroupv1 swap limit")
+		}
 	})
 }
 
-func setupSwap(path string) error {
-	// will allocate 512M on given path
-	newDirCommand := fmt.Sprintf("dd if=/dev/zero of=%s bs=1M count=%d", path, totalSwapSize)
-	mkswapCommand := fmt.Sprintf("mkswap %s", path)
-	swapOnCommand := fmt.Sprintf("swapon %s", path)
-	if err := exec.Command("/bin/sh", "-c",
-		fmt.Sprintf("%s && %s && %s", newDirCommand, mkswapCommand, swapOnCommand)).Run(); err != nil {
-		return err
-	}
-	return nil
+type hostMemInfo struct {
+	swapTotal uint64
+	memTotal  uint64
 }
 
-func cleanupSwap(path string) error {
-	if err := exec.Command("/bin/sh", "-c",
-		"swapoff %s && rm -rf %s", path, path).Run(); err != nil {
-		return err
+func getHostMemInfo() (*hostMemInfo, error) {
+	var result = &hostMemInfo{}
+	file, err := os.Open("/proc/meminfo")
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	defer file.Close()
+	reader := bufio.NewReader(file)
+	for {
+		line, _, err := reader.ReadLine()
+		if err == io.EOF {
+			break
+		}
+		fields := strings.Split(string(line), ":")
+		if len(fields) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(fields[0])
+		value := strings.TrimSpace(fields[1])
+		value = strings.Replace(value, " kB", "", -1)
+		switch key {
+		case "MemTotal":
+			t, err := strconv.ParseUint(value, 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			result.memTotal = t * 1024
+		case "SwapTotal":
+			t, err := strconv.ParseUint(value, 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			result.swapTotal = t * 1024
+		}
+	}
+	return result, nil
+}
+
+func getCgroupLimit() (uint64, bool, error) {
+	var cgroupfilename string
+	unified := IsCgroup2UnifiedMode()
+	if unified {
+		cgroupfilename = fmt.Sprintf("/sys/fs/cgroup/memory/%s/memory.swap.max", toCgroupFsName(cm.NewCgroupName(cm.RootCgroupName, defaultNodeAllocatableCgroup)))
+	} else {
+		cgroupfilename = fmt.Sprintf("/sys/fs/cgroup/memory/%s/memory.memsw.limit_in_bytes", toCgroupFsName(cm.NewCgroupName(cm.RootCgroupName, defaultNodeAllocatableCgroup)))
+	}
+	bs, err := ioutil.ReadFile(cgroupfilename)
+	if err != nil {
+		return 0, unified, err
+	}
+	size, err := strconv.Atoi(string(bs))
+	if err != nil {
+		return 0, unified, err
+	}
+	return uint64(size), unified, nil
 }
