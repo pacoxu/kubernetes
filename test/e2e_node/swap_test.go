@@ -18,12 +18,11 @@ package e2enode
 
 import (
 	"context"
-	"fmt"
 	"os/exec"
-	"time"
+	"strconv"
+	"strings"
 
 	"github.com/onsi/ginkgo"
-	"github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,9 +32,6 @@ import (
 )
 
 const (
-	// Dir to enable swap.
-	swapDir          = "/mnt/swap"
-	totalSwapSize    = 512 // 512Mi
 	reservedSwapSize = "256Mi"
 )
 
@@ -43,18 +39,9 @@ const (
 var _ = SIGDescribe("System reserved swap [Serial]", func() {
 	f := framework.NewDefaultFramework("system-reserved swap test")
 	ginkgo.Context("With config updated with swap reserved", func() {
-		// setup
-		ginkgo.JustBeforeEach(func() {
-			gomega.Eventually(func() error {
-				return setupSwap(swapDir)
-			}, 30*time.Second, framework.Poll).Should(gomega.BeNil())
-		})
-		// cleanup
-		ginkgo.JustAfterEach(func() {
-			gomega.Eventually(func() error {
-				return cleanupSwap(swapDir)
-			}, 30*time.Second, framework.Poll).Should(gomega.BeNil())
-		})
+		if !isSwapOn() {
+			ginkgo.Skip("skipping test when swap is not open on host")
+		}
 		tempSetCurrentKubeletConfig(f, func(initialConfig *kubeletconfig.KubeletConfiguration) {
 			initialConfig.FailSwapOn = false
 			initialConfig.FeatureGates[string(kubefeatures.NodeSwap)] = true
@@ -82,22 +69,16 @@ func runSystemReservedSwapTests(f *framework.Framework) {
 	})
 }
 
-func setupSwap(path string) error {
-	// will allocate 512M on given path
-	newDirCommand := fmt.Sprintf("dd if=/dev/zero of=%s bs=1M count=%d", path, totalSwapSize)
-	mkswapCommand := fmt.Sprintf("mkswap %s", path)
-	swapOnCommand := fmt.Sprintf("swapon %s", path)
-	if err := exec.Command("/bin/sh", "-c",
-		fmt.Sprintf("%s && %s && %s", newDirCommand, mkswapCommand, swapOnCommand)).Run(); err != nil {
-		return err
+func isSwapOn() bool {
+	var output strings.Builder
+	cmd := exec.Command("/bin/sh", "-c", "cat /proc/meminfo|grep 'SwapTotal'|awk '{print$2}'")
+	cmd.Stdout = &output
+	if err := cmd.Run(); err != nil {
+		return false
 	}
-	return nil
-}
-
-func cleanupSwap(path string) error {
-	if err := exec.Command("/bin/sh", "-c",
-		"swapoff %s && rm -rf %s", path, path).Run(); err != nil {
-		return err
+	num, err := strconv.Atoi(output.String())
+	if err != nil {
+		return false
 	}
-	return nil
+	return num > 0
 }
