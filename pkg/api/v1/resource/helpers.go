@@ -136,6 +136,7 @@ func GetResourceRequestQuantity(pod *v1.Pod, resourceName v1.ResourceName) resou
 		return requestQuantity
 	}
 
+	// pod swap limitation is not supported and this is only for scheduling
 	if resourceName == v1.ResourceSwap {
 		return requestQuantity
 	}
