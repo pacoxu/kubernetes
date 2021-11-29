@@ -58,6 +58,8 @@ const (
 	MemoryMin string = "memory.min"
 	// MemoryHigh is memory.high for cgroup v2
 	MemoryHigh string = "memory.high"
+	// MemorySwapMax is swap usage hard limit: memory.swap.max for cgroup v2
+	MemorySwapMax string = "memory.swap.max"
 )
 
 var RootCgroupName = CgroupName([]string{})
@@ -392,6 +394,9 @@ func (m *cgroupManagerImpl) toResources(resourceConfig *ResourceConfig) *libcont
 	}
 	if resourceConfig.Memory != nil {
 		resources.Memory = *resourceConfig.Memory
+		if resourceConfig.Swap != nil {
+			resources.MemorySwap = *resourceConfig.Memory + resourceConfig.Swap
+		}
 	}
 	if resourceConfig.CpuShares != nil {
 		if libcontainercgroups.IsCgroup2UnifiedMode() {
