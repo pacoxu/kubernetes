@@ -178,7 +178,6 @@ func (kl *Kubelet) reconcileHugePageResource(initialNode, existingNode *v1.Node)
 // reconcileSwapResource will update swap capacity and remove swap size no longer supported
 func (kl *Kubelet) reconcileSwapResource(initialNode, existingNode *v1.Node) bool {
 	capacity, resourceIsCapacity := existingNode.Status.Capacity[v1.ResourceSwap]
-	allocatable := existingNode.Status.Allocatable[v1.ResourceSwap]
 	if resourceIsCapacity && !utilfeature.DefaultFeatureGate.Enabled(kubefeatures.NodeSwap) {
 		delete(existingNode.Status.Capacity, v1.ResourceSwap)
 		delete(existingNode.Status.Allocatable, v1.ResourceSwap)
@@ -196,6 +195,7 @@ func (kl *Kubelet) reconcileSwapResource(initialNode, existingNode *v1.Node) boo
 		requiresUpdate = true
 	}
 
+	allocatable := existingNode.Status.Allocatable[v1.ResourceSwap]
 	// Add or update allocatable if it the size was previously unsupported or has changed
 	if allocatable.Cmp(initialAllocatable) != 0 {
 		existingNode.Status.Allocatable[v1.ResourceSwap] = initialAllocatable.DeepCopy()
