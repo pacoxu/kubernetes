@@ -175,7 +175,10 @@ func TestCronJobLaunchesPodAndCleansUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create CronJob: %v", err)
 	}
-	defer cleanupCronJobs(t, cjClient, cronJobName)
+	defer func() {
+		runtime.ErrorHandlers = backupHandlers
+		cleanupCronJobs(t, cjClient, cronJobName)
+	}()
 
 	validateJobAndPod(t, clientSet, namespaceName)
 }
