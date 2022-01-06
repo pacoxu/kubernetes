@@ -69,7 +69,7 @@ var (
 	VolumeStatCalDuration = metrics.NewHistogramVec(
 		&metrics.HistogramOpts{
 			Subsystem: kubeletSubsystem,
-			Name:      "volume_stat_cal_duration_seconds",
+			Name:      "volume_metric_collection_duration_seconds",
 			Help:      "Duration in seconds to calculate volume stats",
 			// Use DefBuckets for now, will customize the buckets if necessary.
 			Buckets:        metrics.DefBuckets,
