@@ -66,16 +66,14 @@ var (
 	)
 	// VolumeStatCalDuration tracks the duration in seconds to calculate volume stats.
 	// this metric is mainly for comparison between fsquota monitoring and `du` for disk usage.
-	VolumeStatCalDuration = metrics.NewHistogramVec(
-		&metrics.HistogramOpts{
-			Subsystem: kubeletSubsystem,
-			Name:      "volume_metric_collection_duration_seconds",
-			Help:      "Duration in seconds to calculate volume stats",
-			// Use DefBuckets for now, will customize the buckets if necessary.
-			Buckets:        metrics.DefBuckets,
+	VolumeStatCalDuration = metrics.NewGaugeVec(
+		&metrics.GaugeOpts{
+			Subsystem:      kubeletSubsystem,
+			Name:           "volume_metric_collection_duration_seconds",
+			Help:           "Duration in seconds to calculate volume stats",
 			StabilityLevel: metrics.ALPHA,
 		},
-		[]string{},
+		[]string{"namespace", "pod", "volume"},
 	)
 )
 

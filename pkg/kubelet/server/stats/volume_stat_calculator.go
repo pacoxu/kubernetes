@@ -137,7 +137,8 @@ func (s *volumeStatCalculator) calcAndStoreStats() {
 		metric, err := func() (*volume.Metrics, error) {
 			startTime := time.Now()
 			defer func() {
-				servermetrics.VolumeStatCalDuration.WithLabelValues().Observe(servermetrics.SinceInSeconds(startTime))
+				// record the latest duration it took to get metrics for this volume
+				servermetrics.VolumeStatCalDuration.WithLabelValues(s.pod.Namespace, s.pod.Name, name).Set(servermetrics.SinceInSeconds(startTime))
 			}()
 			return v.GetMetrics()
 		}()
