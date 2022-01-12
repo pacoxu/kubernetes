@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/component-base/metrics"
 	"k8s.io/component-helpers/storage/ephemeral"
 	"k8s.io/klog/v2"
 	stats "k8s.io/kubelet/pkg/apis/stats/v1alpha1"
@@ -137,8 +138,18 @@ func (s *volumeStatCalculator) calcAndStoreStats() {
 		metric, err := func() (*volume.Metrics, error) {
 			startTime := time.Now()
 			defer func() {
+				duration := servermetrics.SinceInSeconds(startTime)
 				// record the latest duration it took to get metrics for this volume
-				servermetrics.VolumeStatCalDuration.WithLabelValues(s.pod.Namespace, s.pod.Name, name).Set(servermetrics.SinceInSeconds(startTime))
+				// if the duration no more than 1 seconds, no need to show the metric
+				if duration > 1 {
+					servermetrics.VolumeStatCalDuration.WithLabelValues(s.pod.Namespace, s.pod.Name, name).Set(duration)
+				} else {
+					servermetrics.VolumeStatCalDuration.Delete(metrics.Labels{
+						"namespace": s.pod.Namespace,
+						"pod":       s.pod.Name,
+						"volume":    name,
+					})
+				}
 			}()
 			return v.GetMetrics()
 		}()

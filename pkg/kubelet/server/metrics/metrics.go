@@ -69,7 +69,7 @@ var (
 	VolumeStatCalDuration = metrics.NewGaugeVec(
 		&metrics.GaugeOpts{
 			Subsystem:      kubeletSubsystem,
-			Name:           "volume_metric_collection_duration_seconds",
+			Name:           "volume_slow_metric_collection_duration_seconds",
 			Help:           "Duration in seconds to calculate volume stats",
 			StabilityLevel: metrics.ALPHA,
 		},
