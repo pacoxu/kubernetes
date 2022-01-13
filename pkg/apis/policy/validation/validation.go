@@ -44,16 +44,20 @@ const (
 	seccompAllowedProfilesAnnotationKey = "seccomp.security.alpha.kubernetes.io/allowedProfileNames"
 )
 
+type PodDisruptionBudgetValidateOption struct {
+	AllowInvalidLabelValueInSelector bool
+}
+
 // ValidatePodDisruptionBudget validates a PodDisruptionBudget and returns an ErrorList
 // with any errors.
-func ValidatePodDisruptionBudget(pdb *policy.PodDisruptionBudget) field.ErrorList {
-	allErrs := ValidatePodDisruptionBudgetSpec(pdb.Spec, field.NewPath("spec"))
+func ValidatePodDisruptionBudget(pdb *policy.PodDisruptionBudget, opts *PodDisruptionBudgetValidateOption) field.ErrorList {
+	allErrs := ValidatePodDisruptionBudgetSpec(pdb.Spec, opts.AllowInvalidLabelValueInSelector, field.NewPath("spec"))
 	return allErrs
 }
 
 // ValidatePodDisruptionBudgetSpec validates a PodDisruptionBudgetSpec and returns an ErrorList
 // with any errors.
-func ValidatePodDisruptionBudgetSpec(spec policy.PodDisruptionBudgetSpec, fldPath *field.Path) field.ErrorList {
+func ValidatePodDisruptionBudgetSpec(spec policy.PodDisruptionBudgetSpec, allowValidateLabelValueInLabelSelector bool, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 
 	if spec.MinAvailable != nil && spec.MaxUnavailable != nil {
@@ -70,7 +74,7 @@ func ValidatePodDisruptionBudgetSpec(spec policy.PodDisruptionBudgetSpec, fldPat
 		allErrs = append(allErrs, appsvalidation.IsNotMoreThan100Percent(*spec.MaxUnavailable, fldPath.Child("maxUnavailable"))...)
 	}
 
-	allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(spec.Selector, fldPath.Child("selector"))...)
+	allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(spec.Selector, allowValidateLabelValueInLabelSelector, fldPath.Child("selector"))...)
 
 	return allErrs
 }

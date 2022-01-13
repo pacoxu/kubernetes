@@ -55,7 +55,11 @@ func ValidateRoleUpdate(role *rbac.Role, oldRole *rbac.Role) field.ErrorList {
 	return allErrs
 }
 
-func ValidateClusterRole(role *rbac.ClusterRole) field.ErrorList {
+type ClusterRoleValidateOption struct {
+	AllowInvalidLabelValueInSelector bool
+}
+
+func ValidateClusterRole(role *rbac.ClusterRole, opts *ClusterRoleValidateOption) field.ErrorList {
 	allErrs := field.ErrorList{}
 	allErrs = append(allErrs, validation.ValidateObjectMeta(&role.ObjectMeta, false, ValidateRBACName, field.NewPath("metadata"))...)
 
@@ -71,7 +75,7 @@ func ValidateClusterRole(role *rbac.ClusterRole) field.ErrorList {
 		}
 		for i, selector := range role.AggregationRule.ClusterRoleSelectors {
 			fieldPath := field.NewPath("aggregationRule", "clusterRoleSelectors").Index(i)
-			allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(&selector, fieldPath)...)
+			allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(&selector, opts.AllowInvalidLabelValueInSelector, fieldPath)...)
 
 			selector, err := metav1.LabelSelectorAsSelector(&selector)
 			if err != nil {
@@ -86,8 +90,8 @@ func ValidateClusterRole(role *rbac.ClusterRole) field.ErrorList {
 	return nil
 }
 
-func ValidateClusterRoleUpdate(role *rbac.ClusterRole, oldRole *rbac.ClusterRole) field.ErrorList {
-	allErrs := ValidateClusterRole(role)
+func ValidateClusterRoleUpdate(role *rbac.ClusterRole, opts *ClusterRoleValidateOption, oldRole *rbac.ClusterRole) field.ErrorList {
+	allErrs := ValidateClusterRole(role, opts)
 	allErrs = append(allErrs, validation.ValidateObjectMetaUpdate(&role.ObjectMeta, &oldRole.ObjectMeta, field.NewPath("metadata"))...)
 
 	return allErrs

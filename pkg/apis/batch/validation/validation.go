@@ -150,7 +150,7 @@ func ValidateJobSpec(spec *batch.JobSpec, fldPath *field.Path, opts apivalidatio
 	if spec.Selector == nil {
 		allErrs = append(allErrs, field.Required(fldPath.Child("selector"), ""))
 	} else {
-		allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(spec.Selector, fldPath.Child("selector"))...)
+		allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(spec.Selector, opts.AllowInvalidLabelValueInSelector, fldPath.Child("selector"))...)
 	}
 
 	// Whether manually or automatically generated, the selector of the job must match the pods it will produce.

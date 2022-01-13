@@ -120,6 +120,7 @@ func (daemonSetStrategy) PrepareForUpdate(ctx context.Context, obj, old runtime.
 func (daemonSetStrategy) Validate(ctx context.Context, obj runtime.Object) field.ErrorList {
 	daemonSet := obj.(*apps.DaemonSet)
 	opts := pod.GetValidationOptionsFromPodTemplate(&daemonSet.Spec.Template, nil)
+	opts.AllowInvalidLabelValueInSelector = false
 	return validation.ValidateDaemonSet(daemonSet, opts)
 }
 

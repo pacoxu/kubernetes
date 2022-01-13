@@ -265,6 +265,11 @@ func (jobStrategy) ValidateUpdate(ctx context.Context, obj, old runtime.Object) 
 	oldJob := old.(*batch.Job)
 
 	opts := validationOptionsForJob(job, oldJob)
+	opts.AllowInvalidLabelValueInSelector = true
+	tempErrs := validation.ValidateJob(oldJob, opts)
+	if len(tempErrs) > 0 {
+		opts.AllowInvalidLabelValueInSelector = false
+	}
 	validationErrorList := validation.ValidateJob(job, opts)
 	updateErrorList := validation.ValidateJobUpdate(job, oldJob, opts)
 	return append(validationErrorList, updateErrorList...)

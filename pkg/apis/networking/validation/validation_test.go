@@ -251,7 +251,7 @@ func TestValidateNetworkPolicy(t *testing.T) {
 	// Success cases are expected to pass validation.
 
 	for k, v := range successCases {
-		if errs := ValidateNetworkPolicy(v); len(errs) != 0 {
+		if errs := ValidateNetworkPolicy(v, &NetworkingValidationOptions{AllowInvalidLabelValueInSelector: true}); len(errs) != 0 {
 			t.Errorf("Expected success for the success validation test number %d, got %v", k, errs)
 		}
 	}
@@ -368,7 +368,7 @@ func TestValidateNetworkPolicy(t *testing.T) {
 
 	// Error cases are not expected to pass validation.
 	for testName, networkPolicy := range errorCases {
-		if errs := ValidateNetworkPolicy(networkPolicy); len(errs) == 0 {
+		if errs := ValidateNetworkPolicy(networkPolicy, &NetworkingValidationOptions{AllowInvalidLabelValueInSelector: true}); len(errs) == 0 {
 			t.Errorf("Expected failure for test: %s", testName)
 		}
 	}

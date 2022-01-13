@@ -55,6 +55,10 @@ var (
 	)
 )
 
+type NetworkingValidationOptions struct {
+	AllowInvalidLabelValueInSelector bool
+}
+
 // ValidateNetworkPolicyName can be used to check whether the given networkpolicy
 // name is valid.
 func ValidateNetworkPolicyName(name string, prefix bool) []string {
@@ -98,17 +102,17 @@ func ValidateNetworkPolicyPort(port *networking.NetworkPolicyPort, portPath *fie
 }
 
 // ValidateNetworkPolicyPeer validates a NetworkPolicyPeer
-func ValidateNetworkPolicyPeer(peer *networking.NetworkPolicyPeer, peerPath *field.Path) field.ErrorList {
+func ValidateNetworkPolicyPeer(peer *networking.NetworkPolicyPeer, allowValidateLabelValueInLabelSelector bool, peerPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	numPeers := 0
 
 	if peer.PodSelector != nil {
 		numPeers++
-		allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(peer.PodSelector, peerPath.Child("podSelector"))...)
+		allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(peer.PodSelector, allowValidateLabelValueInLabelSelector, peerPath.Child("podSelector"))...)
 	}
 	if peer.NamespaceSelector != nil {
 		numPeers++
-		allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(peer.NamespaceSelector, peerPath.Child("namespaceSelector"))...)
+		allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(peer.NamespaceSelector, allowValidateLabelValueInLabelSelector, peerPath.Child("namespaceSelector"))...)
 	}
 	if peer.IPBlock != nil {
 		numPeers++
@@ -125,9 +129,9 @@ func ValidateNetworkPolicyPeer(peer *networking.NetworkPolicyPeer, peerPath *fie
 }
 
 // ValidateNetworkPolicySpec tests if required fields in the networkpolicy spec are set.
-func ValidateNetworkPolicySpec(spec *networking.NetworkPolicySpec, fldPath *field.Path) field.ErrorList {
+func ValidateNetworkPolicySpec(spec *networking.NetworkPolicySpec, allowValidateLabelValueInLabelSelector bool, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
-	allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(&spec.PodSelector, fldPath.Child("podSelector"))...)
+	allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(&spec.PodSelector, allowValidateLabelValueInLabelSelector, fldPath.Child("podSelector"))...)
 
 	// Validate ingress rules.
 	for i, ingress := range spec.Ingress {
@@ -138,7 +142,7 @@ func ValidateNetworkPolicySpec(spec *networking.NetworkPolicySpec, fldPath *fiel
 		}
 		for i, from := range ingress.From {
 			fromPath := ingressPath.Child("from").Index(i)
-			allErrs = append(allErrs, ValidateNetworkPolicyPeer(&from, fromPath)...)
+			allErrs = append(allErrs, ValidateNetworkPolicyPeer(&from, allowValidateLabelValueInLabelSelector, fromPath)...)
 		}
 	}
 	// Validate egress rules
@@ -150,7 +154,7 @@ func ValidateNetworkPolicySpec(spec *networking.NetworkPolicySpec, fldPath *fiel
 		}
 		for i, to := range egress.To {
 			toPath := egressPath.Child("to").Index(i)
-			allErrs = append(allErrs, ValidateNetworkPolicyPeer(&to, toPath)...)
+			allErrs = append(allErrs, ValidateNetworkPolicyPeer(&to, allowValidateLabelValueInLabelSelector, toPath)...)
 		}
 	}
 	// Validate PolicyTypes
@@ -169,17 +173,31 @@ func ValidateNetworkPolicySpec(spec *networking.NetworkPolicySpec, fldPath *fiel
 }
 
 // ValidateNetworkPolicy validates a networkpolicy.
-func ValidateNetworkPolicy(np *networking.NetworkPolicy) field.ErrorList {
+func ValidateNetworkPolicy(np *networking.NetworkPolicy, opts *NetworkingValidationOptions) field.ErrorList {
 	allErrs := apivalidation.ValidateObjectMeta(&np.ObjectMeta, true, ValidateNetworkPolicyName, field.NewPath("metadata"))
-	allErrs = append(allErrs, ValidateNetworkPolicySpec(&np.Spec, field.NewPath("spec"))...)
+	allErrs = append(allErrs, ValidateNetworkPolicySpec(&np.Spec, opts.AllowInvalidLabelValueInSelector, field.NewPath("spec"))...)
 	return allErrs
+}
+
+// ValidationOptionsForNetworking generates NetworkingValidationOptions for Networking
+func ValidationOptionsForNetworking(new, old *networking.NetworkPolicy) *NetworkingValidationOptions {
+	opts := &NetworkingValidationOptions{
+		AllowInvalidLabelValueInSelector: false,
+	}
+	if old != nil {
+		allErrs := unversionedvalidation.ValidateLabelSelector(&old.Spec.PodSelector, false, field.NewPath("podSelector"))
+		if len(allErrs) > 0 {
+			opts.AllowInvalidLabelValueInSelector = true
+		}
+	}
+	return opts
 }
 
 // ValidateNetworkPolicyUpdate tests if an update to a NetworkPolicy is valid.
 func ValidateNetworkPolicyUpdate(update, old *networking.NetworkPolicy) field.ErrorList {
 	allErrs := field.ErrorList{}
 	allErrs = append(allErrs, apivalidation.ValidateObjectMetaUpdate(&update.ObjectMeta, &old.ObjectMeta, field.NewPath("metadata"))...)
-	allErrs = append(allErrs, ValidateNetworkPolicySpec(&update.Spec, field.NewPath("spec"))...)
+	allErrs = append(allErrs, ValidateNetworkPolicySpec(&update.Spec, true, field.NewPath("spec"))...)
 	return allErrs
 }
 
