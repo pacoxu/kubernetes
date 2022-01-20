@@ -123,7 +123,7 @@ func GetResourceRequestQuantity(pod *v1.Pod, resourceName v1.ResourceName) resou
 	switch resourceName {
 	case v1.ResourceCPU:
 		requestQuantity = resource.Quantity{Format: resource.DecimalSI}
-	case v1.ResourceMemory, v1.ResourceStorage, v1.ResourceEphemeralStorage:
+	case v1.ResourceMemory, v1.ResourceStorage, v1.ResourceEphemeralStorage, v1.ResourceSwap:
 		requestQuantity = resource.Quantity{Format: resource.BinarySI}
 	default:
 		requestQuantity = resource.Quantity{Format: resource.DecimalSI}

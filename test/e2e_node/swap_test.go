@@ -45,6 +45,17 @@ const (
 var _ = SIGDescribe("System reserved swap [Serial]", func() {
 	f := framework.NewDefaultFramework("system-reserved-swap")
 	ginkgo.Context("With config updated with swap reserved", func() {
+		tempSetCurrentKubeletConfig(f, func(initialConfig *kubeletconfig.KubeletConfiguration) {
+			initialConfig.FailSwapOn = false
+			initialConfig.FeatureGates[string(kubefeatures.NodeSwap)] = true
+			initialConfig.MemorySwap = kubeletconfig.MemorySwapConfiguration{
+				SwapBehavior: "LimitedSwap",
+			}
+			if initialConfig.SystemReserved == nil {
+				initialConfig.SystemReserved = map[string]string{}
+			}
+			initialConfig.SystemReserved[string(v1.ResourceSwap)] = reservedSwapSize
+		})
 		runSystemReservedSwapTests(f)
 	})
 })
@@ -56,14 +67,7 @@ func runSystemReservedSwapTests(f *framework.Framework) {
 		if hostMemInfo.swapTotal <= revervedSwapSizeBytes {
 			ginkgo.Skip("skipping test when swap is not enough on host")
 		}
-		tempSetCurrentKubeletConfig(f, func(initialConfig *kubeletconfig.KubeletConfiguration) {
-			initialConfig.FailSwapOn = false
-			initialConfig.FeatureGates[string(kubefeatures.NodeSwap)] = true
-			initialConfig.MemorySwap = kubeletconfig.MemorySwapConfiguration{
-				SwapBehavior: "LimitedSwap",
-			}
-			initialConfig.SystemReserved[string(v1.ResourceSwap)] = reservedSwapSize
-		})
+
 		ginkgo.By("by check node status")
 		nodeList, err := f.ClientSet.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 		framework.ExpectNoError(err)
@@ -140,7 +144,7 @@ func getCgroupLimit() (uint64, bool, error) {
 	if err != nil {
 		return 0, unified, err
 	}
-	size, err := strconv.Atoi(string(bs))
+	size, err := strconv.Atoi(strings.TrimSuffix(string(bs), "\n"))
 	if err != nil {
 		return 0, unified, err
 	}
