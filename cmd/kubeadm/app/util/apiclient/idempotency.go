@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	clientsetretry "k8s.io/client-go/util/retry"
+	"k8s.io/klog/v2"
 
 	"k8s.io/kubernetes/cmd/kubeadm/app/constants"
 )
@@ -341,8 +342,6 @@ func PatchNode(client clientset.Interface, nodeName string, patchFn func(*v1.Nod
 
 // GetConfigMapWithRetry tries to retrieve a ConfigMap using the given client,
 // retrying if we get an unexpected error.
-//
-// TODO: evaluate if this can be done better. Potentially remove the retry if feasible.
 func GetConfigMapWithRetry(client clientset.Interface, namespace, name string) (*v1.ConfigMap, error) {
 	var cm *v1.ConfigMap
 	var lastError error
@@ -352,6 +351,7 @@ func GetConfigMapWithRetry(client clientset.Interface, namespace, name string) (
 		if err == nil {
 			return true, nil
 		}
+		klog.Warningf("Failed to get ConfigMap %q and will retry: %v", name, err)
 		lastError = err
 		return false, nil
 	})
