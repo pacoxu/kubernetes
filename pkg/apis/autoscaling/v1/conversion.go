@@ -24,6 +24,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/conversion"
 	"k8s.io/kubernetes/pkg/apis/autoscaling"
+	autoscalingapiv2 "k8s.io/kubernetes/pkg/apis/autoscaling/v2"
 	"k8s.io/kubernetes/pkg/apis/core"
 )
 
@@ -448,6 +449,9 @@ func Convert_v1_HorizontalPodAutoscaler_To_autoscaling_HorizontalPodAutoscaler(i
 
 	// drop round-tripping annotations after converting to internal
 	out.Annotations, _ = autoscaling.DropRoundTripHorizontalPodAutoscalerAnnotations(out.Annotations)
+
+	autoscalingapiv2.Convert_v2_HPAScalingRules_To_autoscaling_HPAScalingRules(autoscalingapiv2.GenerateHPAScaleUpRules(nil), out.Spec.Behavior.ScaleUp, s)
+	autoscalingapiv2.Convert_v2_HPAScalingRules_To_autoscaling_HPAScalingRules(autoscalingapiv2.GenerateHPAScaleDownRules(nil), out.Spec.Behavior.ScaleDown, s)
 
 	return nil
 }
