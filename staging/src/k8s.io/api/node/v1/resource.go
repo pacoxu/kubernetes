@@ -1,6 +1,3 @@
-//go:build linux
-// +build linux
-
 /*
 Copyright 2022 The Kubernetes Authors.
 
@@ -17,23 +14,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package nodestatus
+package v1
 
 import (
-	"github.com/google/cadvisor/machine"
-	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/klog/v2"
+	corev1 "k8s.io/api/core/v1"
+	resource "k8s.io/apimachinery/pkg/api/resource"
 )
 
-func getSwapCapacity() resource.Quantity {
-	swapCapacity, err := machine.GetMachineSwapCapacity()
-	if err != nil {
-		klog.ErrorS(err, "Failed to get swap capacity from cadvisor")
-		return *resource.NewQuantity(
-			int64(0),
-			resource.BinarySI)
-	}
-	return *resource.NewQuantity(
-		int64(swapCapacity),
-		resource.BinarySI)
+// Swap, in bytes. (500Gi = 500GiB = 500 * 1024 * 1024 * 1024)
+// Supported if the feature gate NodeSwap is enabled
+const ResourceSwap corev1.ResourceName = "swap"
+
+// Swap returns the Swap limit if specified.
+func Swap(rl corev1.ResourceList) *resource.Quantity {
+	return rl.Name(ResourceSwap, resource.BinarySI)
 }

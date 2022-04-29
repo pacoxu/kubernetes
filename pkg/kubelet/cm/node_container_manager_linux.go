@@ -26,6 +26,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	nodev1 "k8s.io/api/node/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -149,7 +150,7 @@ func enforceExistingCgroup(cgroupManager CgroupManager, cName CgroupName, rl v1.
 		if rp.Memory != nil {
 			rp.Unified[MemoryMin] = strconv.FormatInt(*rp.Memory, 10)
 		}
-		if rp.Swap != nil {
+		if rp.Swap != nil && swapControllerAvailable() {
 			rp.Unified[MemorySwapMax] = strconv.FormatInt(*rp.Swap, 10)
 		}
 	}
@@ -180,7 +181,7 @@ func getCgroupConfig(rl v1.ResourceList) *ResourceConfig {
 		val := q.Value()
 		rc.Memory = &val
 	}
-	if q, exists := rl[v1.ResourceSwap]; exists {
+	if q, exists := rl[nodev1.ResourceSwap]; exists {
 		val := q.Value()
 		rc.Swap = &val
 	}

@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	nodev1 "k8s.io/api/node/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -123,14 +124,14 @@ func GetResourceRequestQuantity(pod *v1.Pod, resourceName v1.ResourceName) resou
 	switch resourceName {
 	case v1.ResourceCPU:
 		requestQuantity = resource.Quantity{Format: resource.DecimalSI}
-	case v1.ResourceMemory, v1.ResourceStorage, v1.ResourceEphemeralStorage, v1.ResourceSwap:
+	case v1.ResourceMemory, v1.ResourceStorage, v1.ResourceEphemeralStorage:
 		requestQuantity = resource.Quantity{Format: resource.BinarySI}
 	default:
 		requestQuantity = resource.Quantity{Format: resource.DecimalSI}
 	}
 
 	// pod swap limitation is not supported and this is only for scheduling
-	if resourceName == v1.ResourceSwap {
+	if resourceName == nodev1.ResourceSwap {
 		return requestQuantity
 	}
 

@@ -261,7 +261,7 @@ func (m *cgroupManagerImpl) Validate(name CgroupName) error {
 	// in https://github.com/opencontainers/runc/issues/1440
 	// once resolved, we can remove this code.
 	allowlistControllers := sets.NewString("cpu", "cpuacct", "cpuset", "memory", "systemd", "pids")
-	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.NodeSwap) {
+	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.NodeSwap) && swapControllerAvailable() {
 		allowlistControllers.Insert("swap")
 	}
 
@@ -365,9 +365,13 @@ func (m *cgroupManagerImpl) toResources(resourceConfig *ResourceConfig) *libcont
 	}
 	if resourceConfig.Memory != nil {
 		resources.Memory = *resourceConfig.Memory
-		if resourceConfig.Swap != nil {
-			// In cgroup v1, MemorySwap means total memory usage (memory + swap).
-			resources.MemorySwap = *resourceConfig.Memory + *resourceConfig.Swap
+		if resourceConfig.Swap != nil && swapControllerAvailable() {
+			if libcontainercgroups.IsCgroup2UnifiedMode() {
+				resources.Unified[MemorySwapMax] = *resourceConfig.Swap
+			} else {
+				// In cgroup v1, MemorySwap means total memory usage (memory + swap).
+				resources.MemorySwap = *resourceConfig.Memory + *resourceConfig.Swap
+			}
 		}
 	}
 	if resourceConfig.CPUShares != nil {
@@ -567,4 +571,34 @@ func (m *cgroupManagerImpl) MemoryUsage(name CgroupName) (int64, error) {
 	}
 	val, err := fscommon.GetCgroupParamUint(path, file)
 	return int64(val), err
+}
+
+var (
+	swapControllerAvailability     bool
+	swapControllerAvailabilityOnce sync.Once
+)
+
+func swapControllerAvailable() bool {
+	swapControllerAvailabilityOnce.Do(func() {
+		const warn = "Failed to detect the availability of the swap controller, assuming not available"
+		p := "/sys/fs/cgroup/memory/memory.memsw.limit_in_bytes"
+		if cgroups.Mode() == cgroups.Unified {
+			// memory.swap.max does not exist in the cgroup root, so we check /sys/fs/cgroup/<SELF>/memory.swap.max
+			_, unified, err := cgroups.ParseCgroupFileUnified("/proc/self/cgroup")
+			if err != nil {
+				err = fmt.Errorf("failed to parse /proc/self/cgroup: %w", err)
+				logrus.WithError(err).Warn(warn)
+				return
+			}
+			p = filepath.Join("/sys/fs/cgroup", unified, "memory.swap.max")
+		}
+		if _, err := os.Stat(p); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				logrus.WithError(err).Warn(warn)
+			}
+			return
+		}
+		swapControllerAvailability = true
+	})
+	return swapControllerAvailability
 }

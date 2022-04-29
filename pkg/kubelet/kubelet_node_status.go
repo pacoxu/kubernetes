@@ -26,6 +26,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	nodev1 "k8s.io/api/node/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -176,28 +177,31 @@ func (kl *Kubelet) reconcileHugePageResource(initialNode, existingNode *v1.Node)
 
 // reconcileSwapResource will update swap capacity and remove swap if the feature is disabled
 func (kl *Kubelet) reconcileSwapResource(initialNode, existingNode *v1.Node) bool {
-	capacity, found := existingNode.Status.Capacity[v1.ResourceSwap]
-	if found && !utilfeature.DefaultFeatureGate.Enabled(kubefeatures.NodeSwap) {
-		delete(existingNode.Status.Capacity, v1.ResourceSwap)
-		delete(existingNode.Status.Allocatable, v1.ResourceSwap)
+	capacity, found := existingNode.Status.Capacity[nodev1.ResourceSwap]
+	if !utilfeature.DefaultFeatureGate.Enabled(kubefeatures.NodeSwap) {
+		if !found {
+			return false
+		}
+		delete(existingNode.Status.Capacity, nodev1.ResourceSwap)
+		delete(existingNode.Status.Allocatable, nodev1.ResourceSwap)
 		klog.InfoS("Removing swap resource from node object since feature gate NodeSwap is disabled")
 		return true
 	}
 
 	requiresUpdate := updateDefaultResources(initialNode, existingNode)
-	initialCapacity := initialNode.Status.Capacity[v1.ResourceSwap]
-	initialAllocatable := initialNode.Status.Allocatable[v1.ResourceSwap]
+	initialCapacity := initialNode.Status.Capacity[nodev1.ResourceSwap]
+	initialAllocatable := initialNode.Status.Allocatable[nodev1.ResourceSwap]
 
 	// Add or update capacity if it the size was previously unsupported or has changed
 	if capacity.Cmp(initialCapacity) != 0 {
-		existingNode.Status.Capacity[v1.ResourceSwap] = initialCapacity.DeepCopy()
+		existingNode.Status.Capacity[nodev1.ResourceSwap] = initialCapacity.DeepCopy()
 		requiresUpdate = true
 	}
 
-	allocatable := existingNode.Status.Allocatable[v1.ResourceSwap]
+	allocatable := existingNode.Status.Allocatable[nodev1.ResourceSwap]
 	// Add or update allocatable if it the size was previously unsupported or has changed
 	if allocatable.Cmp(initialAllocatable) != 0 {
-		existingNode.Status.Allocatable[v1.ResourceSwap] = initialAllocatable.DeepCopy()
+		existingNode.Status.Allocatable[nodev1.ResourceSwap] = initialAllocatable.DeepCopy()
 		requiresUpdate = true
 	}
 

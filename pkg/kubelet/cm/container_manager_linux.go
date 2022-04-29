@@ -39,6 +39,7 @@ import (
 
 	libcontaineruserns "github.com/opencontainers/runc/libcontainer/userns"
 	v1 "k8s.io/api/core/v1"
+	nodev1 "k8s.io/api/node/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -244,7 +245,7 @@ func NewContainerManager(mountUtil mount.Interface, cadvisorInterface cadvisor.I
 		if err != nil {
 			klog.ErrorS(err, "Failed to get swap capacity from cadvisor")
 		} else {
-			capacity[v1.ResourceSwap] = *resource.NewQuantity(
+			capacity[nodev1.ResourceSwap] = *resource.NewQuantity(
 				int64(swapCapacity),
 				resource.BinarySI)
 		}

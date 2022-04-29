@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,8 +26,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/onsi/ginkgo"
-	v1 "k8s.io/api/core/v1"
+	"github.com/onsi/ginkgo/v2"
+	nodev1 "k8s.io/api/node/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
@@ -42,7 +42,7 @@ const (
 )
 
 // Serial because the test updates kubelet configuration.
-var _ = SIGDescribe("System reserved swap [Serial]", func() {
+var _ = SIGDescribe("System reserved swap [LinuxOnly] [Serial]", func() {
 	f := framework.NewDefaultFramework("system-reserved-swap")
 	ginkgo.Context("With config updated with swap reserved", func() {
 		tempSetCurrentKubeletConfig(f, func(initialConfig *kubeletconfig.KubeletConfiguration) {
@@ -54,7 +54,7 @@ var _ = SIGDescribe("System reserved swap [Serial]", func() {
 			if initialConfig.SystemReserved == nil {
 				initialConfig.SystemReserved = map[string]string{}
 			}
-			initialConfig.SystemReserved[string(v1.ResourceSwap)] = reservedSwapSize
+			initialConfig.SystemReserved[string(nodev1.ResourceSwap)] = reservedSwapSize
 		})
 		runSystemReservedSwapTests(f)
 	})
@@ -73,8 +73,8 @@ func runSystemReservedSwapTests(f *framework.Framework) {
 		framework.ExpectNoError(err)
 		// Assuming that there is only one node, because this is a node e2e test.
 		framework.ExpectEqual(len(nodeList.Items), 1)
-		allocateble := nodeList.Items[0].Status.Allocatable.Swap()
-		capacity := nodeList.Items[0].Status.Capacity.Swap()
+		allocateble := nodev1.Swap(nodeList.Items[0].Status.Allocatable)
+		capacity := nodev1.Swap(nodeList.Items[0].Status.Capacity)
 		reserved := resource.MustParse(reservedSwapSize)
 		reserved.Add(*allocateble)
 		framework.ExpectEqual(reserved.Cmp(*capacity), 0)
