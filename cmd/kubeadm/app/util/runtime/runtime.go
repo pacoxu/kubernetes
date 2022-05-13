@@ -31,7 +31,6 @@ import (
 var defaultKnownCRISockets = []string{
 	constants.CRISocketContainerd,
 	constants.CRISocketCRIO,
-	constants.CRISocketDocker,
 }
 
 // ContainerRuntime is an interface for working with container runtimes
