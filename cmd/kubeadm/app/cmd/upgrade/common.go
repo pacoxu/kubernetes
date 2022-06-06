@@ -134,7 +134,7 @@ func enforceRequirements(flags *applyPlanFlags, args []string, dryRun bool, upgr
 	var newK8sVersion string
 	cfg, legacyReconfigure, err := loadConfig(flags.cfgPath, client, !upgradeApply, printer)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) && strings.Contains(err.Error(), constants.KubeadmConfigConfigMap) {
 			printer.Printf("[upgrade/config] In order to upgrade, a ConfigMap called %q in the %s namespace must exist.\n", constants.KubeadmConfigConfigMap, metav1.NamespaceSystem)
 			printer.Printf("[upgrade/config] Without this information, 'kubeadm upgrade' won't know how to configure your upgraded cluster.\n")
 			printer.Println()
