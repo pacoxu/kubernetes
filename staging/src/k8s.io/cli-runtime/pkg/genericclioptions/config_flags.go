@@ -22,13 +22,12 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/spf13/pflag"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
-	diskcached "k8s.io/client-go/discovery/cached/disk"
+	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
@@ -275,17 +274,21 @@ func (f *ConfigFlags) toDiscoveryClient() (discovery.CachedDiscoveryInterface, e
 	config.Burst = f.discoveryBurst
 	config.QPS = f.discoveryQPS
 
-	cacheDir := defaultCacheDir
+	dc, err := discovery.NewDiscoveryClientForConfig(config)
+	// writing cache to disk may be slow, but it is needed.
+	go func() {
+		cacheDir := defaultCacheDir
 
-	// retrieve a user-provided value for the "cache-dir"
-	// override httpCacheDir and discoveryCacheDir if user-value is given.
-	if f.CacheDir != nil {
-		cacheDir = *f.CacheDir
-	}
-	httpCacheDir := filepath.Join(cacheDir, "http")
-	discoveryCacheDir := computeDiscoverCacheDir(filepath.Join(cacheDir, "discovery"), config.Host)
-
-	return diskcached.NewCachedDiscoveryClientForConfig(config, discoveryCacheDir, httpCacheDir, time.Duration(6*time.Hour))
+		// retrieve a user-provided value for the "cache-dir"
+		// override httpCacheDir and discoveryCacheDir if user-value is given.
+		if f.CacheDir != nil {
+			cacheDir = *f.CacheDir
+		}
+		httpCacheDir := filepath.Join(cacheDir, "http")
+		discoveryCacheDir := computeDiscoverCacheDir(filepath.Join(cacheDir, "discovery"), config.Host)
+		diskcached.NewCachedDiscoveryClientForConfig(config, discoveryCacheDir, httpCacheDir, time.Duration(6*time.Hour))
+	}()
+	return memory.NewMemCacheClient(dc), err
 }
 
 // ToRESTMapper returns a mapper.
