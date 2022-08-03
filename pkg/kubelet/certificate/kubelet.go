@@ -17,6 +17,7 @@ limitations under the License.
 package certificate
 
 import (
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -31,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/certificate"
+	"k8s.io/client-go/util/keyutil"
 	compbasemetrics "k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
 	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
@@ -104,24 +106,32 @@ func NewKubeletServerCertificateManager(kubeClient clientset.Interface, kubeCfg 
 		}
 	}
 
-	m, err := certificate.NewManager(&certificate.Config{
-		ClientsetFn: clientsetFn,
-		GetTemplate: getTemplate,
-		SignerName:  certificates.KubeletServingSignerName,
-		Usages: []certificates.KeyUsage{
-			// https://tools.ietf.org/html/rfc5280#section-4.2.1.3
-			//
-			// Digital signature allows the certificate to be used to verify
-			// digital signatures used during TLS negotiation.
-			certificates.UsageDigitalSignature,
+	usages := []certificates.KeyUsage{
+		// https://tools.ietf.org/html/rfc5280#section-4.2.1.3
+		//
+		// Digital signature allows the certificate to be used to verify
+		// digital signatures used during TLS negotiation.
+		certificates.UsageDigitalSignature,
+		// ServerAuth allows the cert to be used by a TLS server to
+		// authenticate itself to a TLS client.
+		certificates.UsageServerAuth,
+	}
+	if cert, err := certificateStore.Current(); err == nil {
+		keyData, _ := keyutil.MarshalPrivateKeyToPEM(cert.PrivateKey)
+		privateKey, _ := keyutil.ParsePrivateKeyPEM(keyData)
+		if _, ok := privateKey.(*rsa.PrivateKey); ok {
 			// KeyEncipherment allows the cert/key pair to be used to encrypt
 			// keys, including the symmetric keys negotiated during TLS setup
-			// and used for data transfer.
-			certificates.UsageKeyEncipherment,
-			// ServerAuth allows the cert to be used by a TLS server to
-			// authenticate itself to a TLS client.
-			certificates.UsageServerAuth,
-		},
+			// and used for data transfer..
+			usages = append(usages, certificates.UsageKeyEncipherment)
+		}
+	}
+
+	m, err := certificate.NewManager(&certificate.Config{
+		ClientsetFn:             clientsetFn,
+		GetTemplate:             getTemplate,
+		SignerName:              certificates.KubeletServingSignerName,
+		Usages:                  usages,
 		CertificateStore:        certificateStore,
 		CertificateRotation:     certificateRotationAge,
 		CertificateRenewFailure: certificateRenewFailure,
@@ -221,6 +231,27 @@ func NewKubeletClientCertificateManager(
 	)
 	legacyregistry.Register(certificateRenewFailure)
 
+	usages := []certificates.KeyUsage{
+		// https://tools.ietf.org/html/rfc5280#section-4.2.1.3
+		//
+		// DigitalSignature allows the certificate to be used to verify
+		// digital signatures including signatures used during TLS
+		// negotiation.
+		certificates.UsageDigitalSignature,
+		// ClientAuth allows the cert to be used by a TLS client to
+		// authenticate itself to the TLS server.
+		certificates.UsageClientAuth,
+	}
+	if cert, err := certificateStore.Current(); err == nil {
+		keyData, _ := keyutil.MarshalPrivateKeyToPEM(cert.PrivateKey)
+		privateKey, _ := keyutil.ParsePrivateKeyPEM(keyData)
+		if _, ok := privateKey.(*rsa.PrivateKey); ok {
+			// KeyEncipherment allows the cert/key pair to be used to encrypt
+			// keys, including the symmetric keys negotiated during TLS setup
+			// and used for data transfer..
+			usages = append(usages, certificates.UsageKeyEncipherment)
+		}
+	}
 	m, err := certificate.NewManager(&certificate.Config{
 		ClientsetFn: clientsetFn,
 		Template: &x509.CertificateRequest{
@@ -230,21 +261,7 @@ func NewKubeletClientCertificateManager(
 			},
 		},
 		SignerName: certificates.KubeAPIServerClientKubeletSignerName,
-		Usages: []certificates.KeyUsage{
-			// https://tools.ietf.org/html/rfc5280#section-4.2.1.3
-			//
-			// DigitalSignature allows the certificate to be used to verify
-			// digital signatures including signatures used during TLS
-			// negotiation.
-			certificates.UsageDigitalSignature,
-			// KeyEncipherment allows the cert/key pair to be used to encrypt
-			// keys, including the symmetric keys negotiated during TLS setup
-			// and used for data transfer..
-			certificates.UsageKeyEncipherment,
-			// ClientAuth allows the cert to be used by a TLS client to
-			// authenticate itself to the TLS server.
-			certificates.UsageClientAuth,
-		},
+		Usages:     usages,
 
 		// For backwards compatibility, the kubelet supports the ability to
 		// provide a higher privileged certificate as initial data that will
