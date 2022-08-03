@@ -445,6 +445,12 @@ func (m *manager) RotateCerts() (bool, error) {
 func (m *manager) rotateCerts() (bool, error) {
 	m.logf("%s: Rotating certificates", m.name)
 
+	// remove UsageKeyEncipherment before generating new certs as new certs is elliptic based
+	if hasKeyUsage(m.usages, certificates.UsageKeyEncipherment) {
+		// remove the last one as key encipherment was appened in kubelet.go
+		m.usages = m.usages[:len(m.usages)-1]
+	}
+
 	template, csrPEM, keyPEM, privateKey, err := m.generateCSR()
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("%s: Unable to generate a certificate signing request: %v", m.name, err))
