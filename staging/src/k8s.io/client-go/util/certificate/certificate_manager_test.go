@@ -27,7 +27,6 @@ import (
 	"testing"
 	"time"
 
-	certificates "k8s.io/api/certificates/v1"
 	certificatesv1 "k8s.io/api/certificates/v1"
 	certificatesv1beta1 "k8s.io/api/certificates/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -277,11 +276,9 @@ func TestSetRotationDeadline(t *testing.T) {
 					},
 				},
 				getTemplate: func() *x509.CertificateRequest { return &x509.CertificateRequest{} },
-				getUsages: func(privateKey interface{}) []certificates.KeyUsage {
-					return []certificates.KeyUsage{}
-				},
-				now:  func() time.Time { return now },
-				logf: t.Logf,
+				getUsages:   nil,
+				now:         func() time.Time { return now },
+				logf:        t.Logf,
 			}
 			jitteryDuration = func(float64) time.Duration { return time.Duration(float64(tc.notAfter.Sub(tc.notBefore)) * 0.7) }
 			lowerBound := tc.notBefore.Add(time.Duration(float64(tc.notAfter.Sub(tc.notBefore)) * 0.7))
@@ -475,9 +472,7 @@ func TestRotateCertCreateCSRError(t *testing.T) {
 			},
 		},
 		getTemplate: func() *x509.CertificateRequest { return &x509.CertificateRequest{} },
-		getUsages: func(privateKey interface{}) []certificates.KeyUsage {
-			return []certificates.KeyUsage{}
-		},
+		getUsages:   nil,
 		clientsetFn: func(_ *tls.Certificate) (clientset.Interface, error) {
 			return newClientset(fakeClient{failureType: createError}), nil
 		},
@@ -502,9 +497,7 @@ func TestRotateCertWaitingForResultError(t *testing.T) {
 			},
 		},
 		getTemplate: func() *x509.CertificateRequest { return &x509.CertificateRequest{} },
-		getUsages: func(privateKey interface{}) []certificates.KeyUsage {
-			return []certificates.KeyUsage{}
-		},
+		getUsages:   nil,
 		clientsetFn: func(_ *tls.Certificate) (clientset.Interface, error) {
 			return newClientset(fakeClient{failureType: watchError}), nil
 		},

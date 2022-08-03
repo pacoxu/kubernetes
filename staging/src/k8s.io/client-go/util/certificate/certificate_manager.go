@@ -263,10 +263,16 @@ func NewManager(config *Config) (Manager, error) {
 		name = m.signerName
 	}
 	if len(name) == 0 {
-		switch {
-		case hasKeyUsage(config.Usages, certificates.UsageClientAuth):
+		var privateKey interface{}
+		currentCert, err := config.CertificateStore.Current()
+		if err == nil {
+			keyData, _ := keyutil.MarshalPrivateKeyToPEM(currentCert.PrivateKey)
+			privateKey, _ = keyutil.ParsePrivateKeyPEM(keyData)
+		}
+		if privateKey == nil || hasKeyUsage(getUsages(privateKey), certificates.UsageClientAuth) {
 			name = string(certificates.UsageClientAuth)
-		default:
+		} else {
+
 			name = "certificate"
 		}
 	}
