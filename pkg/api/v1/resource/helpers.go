@@ -27,7 +27,7 @@ import (
 )
 
 // PodRequestsAndLimits returns a dictionary of all defined resources summed up for all
-// containers of the pod. If PodOverhead feature is enabled, pod overhead is added to the
+// containers of the pod. By, pod overhead is added to the
 // total container resource requests and to the total container limits which have a
 // non-zero quantity.
 func PodRequestsAndLimits(pod *v1.Pod) (reqs, limits v1.ResourceList) {

@@ -656,14 +656,6 @@ const (
 	// sandbox creation and network configuration completes successfully
 	PodHasNetworkCondition featuregate.Feature = "PodHasNetworkCondition"
 
-	// owner: @egernst
-	// alpha: v1.16
-	// beta: v1.18
-	// ga: v1.24
-	//
-	// Enables PodOverhead, for accounting pod overheads which are specific to a given RuntimeClass
-	PodOverhead featuregate.Feature = "PodOverhead"
-
 	// owner: @liggitt, @tallclair, sig-auth
 	// alpha: v1.22
 	// beta: v1.23
@@ -1037,6 +1029,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	NetworkPolicyStatus: {Default: false, PreRelease: featuregate.Alpha},
 
+	NodeInclusionPolicyInPodTopologySpread: {Default: false, PreRelease: featuregate.Alpha},
+
 	NodeOutOfServiceVolumeDetach: {Default: false, PreRelease: featuregate.Alpha},
 
 	NodeSwap: {Default: false, PreRelease: featuregate.Alpha},
@@ -1052,8 +1046,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	PodDisruptionConditions: {Default: false, PreRelease: featuregate.Alpha},
 
 	PodHasNetworkCondition: {Default: false, PreRelease: featuregate.Alpha},
-
-	PodOverhead: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.26
 
 	PodSecurity: {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 
@@ -1074,6 +1066,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	RetroactiveDefaultStorageClass: {Default: false, PreRelease: featuregate.Alpha},
 
 	RotateKubeletServerCertificate: {Default: true, PreRelease: featuregate.Beta},
+
+	SELinuxMountReadWriteOncePod: {Default: false, PreRelease: featuregate.Alpha},
 
 	SeccompDefault: {Default: true, PreRelease: featuregate.Beta},
 
@@ -1097,19 +1091,15 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	TopologyManager: {Default: true, PreRelease: featuregate.Beta},
 
-	VolumeCapacityPriority: {Default: false, PreRelease: featuregate.Alpha},
-
 	UserNamespacesStatelessPodsSupport: {Default: false, PreRelease: featuregate.Alpha},
+
+	VolumeCapacityPriority: {Default: false, PreRelease: featuregate.Alpha},
 
 	WinDSR: {Default: false, PreRelease: featuregate.Alpha},
 
 	WinOverlay: {Default: true, PreRelease: featuregate.Beta},
 
 	WindowsHostProcessContainers: {Default: true, PreRelease: featuregate.Beta},
-
-	NodeInclusionPolicyInPodTopologySpread: {Default: false, PreRelease: featuregate.Alpha},
-
-	SELinuxMountReadWriteOncePod: {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
