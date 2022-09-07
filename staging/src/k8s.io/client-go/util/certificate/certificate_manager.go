@@ -269,7 +269,7 @@ func NewManager(config *Config) (Manager, error) {
 			keyData, _ := keyutil.MarshalPrivateKeyToPEM(currentCert.PrivateKey)
 			privateKey, _ = keyutil.ParsePrivateKeyPEM(keyData)
 		}
-		if privateKey == nil || hasKeyUsage(getUsages(privateKey), certificates.UsageClientAuth) {
+		if hasKeyUsage(getUsages(privateKey), certificates.UsageClientAuth) {
 			name = string(certificates.UsageClientAuth)
 		} else {
 
@@ -482,6 +482,7 @@ func (m *manager) rotateCerts() (bool, error) {
 	var usages []certificates.KeyUsage
 	if m.getUsages != nil {
 		usages = m.getUsages(privateKey)
+		m.logf("%s: get usages", usages)
 	}
 	reqName, reqUID, err := csr.RequestCertificate(clientSet, csrPEM, "", m.signerName, m.requestedCertificateLifetime, usages, privateKey)
 	if err != nil {
