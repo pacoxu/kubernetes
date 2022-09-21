@@ -38,6 +38,9 @@ import (
 // Pod -> ID
 var podQuotaMap = make(map[types.UID]common.QuotaID)
 
+// Pod -> Pod UID
+var podUIDMap = make(map[types.UID]types.UID)
+
 // Dir -> ID (for convenience)
 var dirQuotaMap = make(map[string]common.QuotaID)
 
@@ -319,11 +322,12 @@ func AssignQuota(m mount.Interface, path string, poduid types.UID, bytes *resour
 	// volumes in a pod, we can simply remove this line of code.
 	// If and when we decide permanently that we're going to adopt
 	// one quota per volume, we can rip all of the pod code out.
-	poduid = types.UID(uuid.NewUUID()) //nolint:staticcheck // SA4009 poduid is overwritten by design, see comment above
-	if pod, ok := dirPodMap[path]; ok && pod != poduid {
-		return fmt.Errorf("requesting quota on existing directory %s but different pod %s %s", path, pod, poduid)
+	newpoduid := types.UID(uuid.NewUUID()) //nolint:staticcheck // SA4009 poduid is overwritten by design, see comment above
+	podUIDMap[newpoduid] = poduid
+	if pod, ok := dirPodMap[path]; ok && pod != newpoduid {
+		return fmt.Errorf("requesting quota on existing directory %s but different pod %s %s", path, pod, newpoduid)
 	}
-	oid, ok := podQuotaMap[poduid]
+	oid, ok := podQuotaMap[newpoduid]
 	if ok {
 		if quotaSizeMap[oid] != ibytes {
 			return fmt.Errorf("requesting quota of different size: old %v new %v", quotaSizeMap[oid], bytes)
@@ -342,12 +346,12 @@ func AssignQuota(m mount.Interface, path string, poduid types.UID, bytes *resour
 			ibytes = -1
 		}
 		if err = setQuotaOnDir(path, id, ibytes); err == nil {
-			quotaPodMap[id] = poduid
+			quotaPodMap[id] = newpoduid
 			quotaSizeMap[id] = ibytes
-			podQuotaMap[poduid] = id
+			podQuotaMap[newpoduid] = id
 			dirQuotaMap[path] = id
-			dirPodMap[path] = poduid
-			podDirCountMap[poduid]++
+			dirPodMap[path] = newpoduid
+			podDirCountMap[newpoduid]++
 			klog.V(4).Infof("Assigning quota ID %d (%d) to %s", id, ibytes, path)
 			return nil
 		}
@@ -436,6 +440,11 @@ func ClearQuota(m mount.Interface, path string) error {
 		delete(quotaPodMap, podQuotaMap[poduid])
 		delete(podDirCountMap, poduid)
 		delete(podQuotaMap, poduid)
+		for podnewuid, uid := range podUIDMap {
+			if uid == poduid {
+				delete(podUIDMap, podnewuid)
+			}
+		}
 	} else {
 		err = removeProjectID(path, projid)
 		podDirCountMap[poduid]--
