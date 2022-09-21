@@ -138,7 +138,11 @@ func HashContainerWithoutResources(container *v1.Container) uint64 {
 // HashAuth - returns a hash code for a CRI pull image auth
 func HashAuth(auth *runtimeapi.AuthConfig) string {
 	hash := fnv.New64a()
-	authJSON, _ := json.Marshal(auth)
+	authJSON, err := json.Marshal(auth)
+	if err != nil {
+		klog.ErrorS(err, "Failed to marshal auth config")
+		return ""
+	}
 	hashutil.DeepHashObject(hash, authJSON)
 	return strconv.FormatUint(hash.Sum64(), 16)
 }

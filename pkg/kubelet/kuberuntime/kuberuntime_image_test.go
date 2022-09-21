@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -78,7 +79,6 @@ func TestPullImageWithInvalidImageName(t *testing.T) {
 		imageRef, err := fakeManager.PullImage(ctx, kubecontainer.ImageSpec{Image: val}, nil, nil)
 		assert.Error(t, err)
 		assert.Equal(t, "", imageRef)
-
 	}
 }
 
@@ -245,6 +245,12 @@ func TestImageStatsWithError(t *testing.T) {
 }
 
 func TestPullWithSecrets(t *testing.T) {
+	tmpStateDir, err := os.MkdirTemp("", "image_manager_state")
+	if err != nil {
+		t.Errorf("cannot create state file: %s", err.Error())
+	}
+	defer os.RemoveAll(tmpStateDir)
+
 	ctx := context.Background()
 	// auth value is equivalent to: "username":"passed-user","password":"passed-password"
 	dockerCfg := map[string]map[string]string{"index.docker.io/v1/": {"email": "passed-email", "auth": "cGFzc2VkLXVzZXI6cGFzc2VkLXBhc3N3b3Jk"}}
@@ -307,7 +313,7 @@ func TestPullWithSecrets(t *testing.T) {
 	for description, test := range tests {
 		builtInKeyRing := &credentialprovider.BasicDockerKeyring{}
 		builtInKeyRing.Add(test.builtInDockerConfig)
-		_, fakeImageService, fakeManager, err := customTestRuntimeManager(builtInKeyRing)
+		_, fakeImageService, fakeManager, err := customTestRuntimeManager(builtInKeyRing, tmpStateDir)
 		require.NoError(t, err)
 
 		_, _, err = fakeManager.PullImage(ctx, kubecontainer.ImageSpec{Image: test.imageName}, test.passedSecrets, nil)

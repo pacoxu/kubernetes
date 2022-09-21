@@ -91,7 +91,7 @@ func (f *fakePodPullingTimeRecorder) RecordImageStartedPulling(podUID types.UID)
 
 func (f *fakePodPullingTimeRecorder) RecordImageFinishedPulling(podUID types.UID) {}
 
-func newFakeKubeRuntimeManager(runtimeService internalapi.RuntimeService, imageService internalapi.ImageManagerService, machineInfo *cadvisorapi.MachineInfo, osInterface kubecontainer.OSInterface, runtimeHelper kubecontainer.RuntimeHelper, keyring credentialprovider.DockerKeyring, tracer trace.Tracer) (*kubeGenericRuntimeManager, error) {
+func newFakeKubeRuntimeManager(runtimeService internalapi.RuntimeService, imageService internalapi.ImageManagerService, machineInfo *cadvisorapi.MachineInfo, osInterface kubecontainer.OSInterface, runtimeHelper kubecontainer.RuntimeHelper, keyring credentialprovider.DockerKeyring, tracer trace.Tracer, stateDir string) (*kubeGenericRuntimeManager, error) {
 	ctx := context.Background()
 	recorder := &record.FakeRecorder{}
 	logManager, err := logs.NewContainerLogManager(runtimeService, osInterface, "1", 2)
@@ -126,7 +126,7 @@ func newFakeKubeRuntimeManager(runtimeService internalapi.RuntimeService, imageS
 	kubeRuntimeManager.containerGC = newContainerGC(runtimeService, podStateProvider, kubeRuntimeManager, tracer)
 	kubeRuntimeManager.podStateProvider = podStateProvider
 	kubeRuntimeManager.runtimeName = typedVersion.RuntimeName
-	kubeRuntimeManager.imagePuller = images.NewImageManager(
+	kubeRuntimeManager.imagePullSecretEnsurer = images.NewImageManager(
 		kubecontainer.FilterEventRecorder(recorder),
 		kubeRuntimeManager,
 		flowcontrol.NewBackOff(time.Second, 300*time.Second),

@@ -421,7 +421,7 @@ const (
 
 	// owner: @mikebrow @pacoxu
 	// kep: http://kep.k8s.io/2535
-	// alpha: v1.29
+	// alpha: v1.30
 	//
 	// Enables kubelet to ensure images pulled with pod imagePullSecrets are authenticated
 	// by other pods that do not have the same credentials.
@@ -1091,6 +1091,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	JobReadyPods: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.31
 
 	KubeletCgroupDriverFromCRI: {Default: false, PreRelease: featuregate.Alpha},
+
+	KubeletInUserNamespace: {Default: false, PreRelease: featuregate.Alpha},
 
 	KubeletEnsureSecretPulledImages: {Default: false, PreRelease: featuregate.Alpha},
 

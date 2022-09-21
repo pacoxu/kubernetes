@@ -82,6 +82,7 @@ func NewImageManager(recorder record.EventRecorder, imageService kubecontainer.I
 	} else {
 		puller = newParallelImagePuller(imageService, maxParallelImagePulls)
 	}
+
 	return &imageManager{
 		recorder:                recorder,
 		imageService:            imageService,
@@ -96,31 +97,25 @@ func NewImageManager(recorder record.EventRecorder, imageService kubecontainer.I
 // shouldPullImage returns whether we should pull an image according to
 // the presence and pull policy of the image.
 func shouldPullImage(container *v1.Container, imagePresent, pulledBySecret, ensuredBySecret bool) bool {
-	if container.ImagePullPolicy == v1.PullNever {
+	switch container.ImagePullPolicy {
+	case v1.PullNever:
 		return false
-	}
-
-	if !utilfeature.DefaultFeatureGate.Enabled(features.KubeletEnsureSecretPulledImages) { // ungated old behavior
-		if container.ImagePullPolicy == v1.PullAlways ||
-			(container.ImagePullPolicy == v1.PullIfNotPresent && (!imagePresent)) {
+	case v1.PullAlways:
+		return true
+	case v1.PullIfNotPresent:
+		if !utilfeature.DefaultFeatureGate.Enabled(features.KubeletEnsureSecretPulledImages) {
+			return !imagePresent
+		}
+		if !imagePresent {
 			return true
 		}
-	} else { // new gated behavior
-		if container.ImagePullPolicy == v1.PullAlways {
-			return true
-		}
-		if container.ImagePullPolicy == v1.PullIfNotPresent {
-			if !imagePresent {
-				return true
-			}
-			// if the imageRef has been pulled by a secret and Pull Policy is PullIfNotPresent
-			// we need to ensure that the current pod's secrets map to an auth that has Already
-			// pulled the image successfully. Otherwise pod B could use pod A's images
-			// without auth. So in this case if pulledBySecret but not ensured by matching
-			// secret auth for a pull again for the pod B scenario where the auth does not match
-			if pulledBySecret && !ensuredBySecret {
-				return true // noting here that old behaviour returns false in this case indicating the image should not be pulled
-			}
+		// if the imageRef has been pulled by a secret and Pull Policy is PullIfNotPresent
+		// we need to ensure that the current pod's secrets map to an auth that has Already
+		// pulled the image successfully. Otherwise pod B could use pod A's images
+		// without auth. So in this case if pulledBySecret but not ensured by matching
+		// secret auth for a pull again for the pod B scenario where the auth does not match
+		if pulledBySecret && !ensuredBySecret {
+			return true // noting here that old behaviour returns false in this case indicating the image should not be pulled
 		}
 	}
 	return false
@@ -175,7 +170,11 @@ func (m *imageManager) EnsureImageExists(ctx context.Context, pod *v1.Pod, conta
 
 	present := imageRef != ""
 
-	pulledBySecret, ensuredBySecret := m.isEnsuredBySecret(imageRef, spec, pullSecrets)
+	var pulledBySecret, ensuredBySecret bool
+	if present {
+		pulledBySecret, ensuredBySecret = m.isEnsuredBySecret(imageRef, spec, pullSecrets)
+		klog.V(5).InfoS("Get ensured check by secret", "image", image, "imageRef", imageRef, "pulledBySecret", pulledBySecret, "ensuredBySecret", ensuredBySecret)
+	}
 
 	if !shouldPullImage(container, present, pulledBySecret, ensuredBySecret) {
 		// should not pull when pull never, or if present and correctly authenticated
@@ -292,7 +291,7 @@ func applyDefaultImageTag(image string) (string, error) {
 
 // isEnsuredBySecret - returns true if the secret for an auth used to pull an
 // image has already been authenticated through a successful pull request
-// and the same auth exists for this podSandbox/image/
+// and the same auth exists for this podSandbox/image.
 func (m *imageManager) isEnsuredBySecret(imageRef string, image kubecontainer.ImageSpec, pullSecrets []v1.Secret) (pulledBySecret, ensuredBySecret bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
