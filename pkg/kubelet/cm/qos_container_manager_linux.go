@@ -57,6 +57,8 @@ type qosContainerManagerImpl struct {
 	getNodeAllocatable func() v1.ResourceList
 	cgroupRoot         CgroupName
 	qosReserved        map[v1.ResourceName]int64
+	queue              []chan error
+	updateCh           chan interface{}
 }
 
 func NewQOSContainerManager(subsystems *CgroupSubsystems, cgroupRoot CgroupName, nodeConfig NodeConfig, cgroupManager CgroupManager) (QOSContainerManager, error) {
@@ -71,6 +73,7 @@ func NewQOSContainerManager(subsystems *CgroupSubsystems, cgroupRoot CgroupName,
 		cgroupManager: cgroupManager,
 		cgroupRoot:    cgroupRoot,
 		qosReserved:   nodeConfig.QOSReserved,
+		updateCh:      make(chan interface{}, 1),
 	}, nil
 }
 
@@ -140,7 +143,28 @@ func (m *qosContainerManagerImpl) Start(getNodeAllocatable func() v1.ResourceLis
 		}
 	}, periodicQOSCgroupUpdateInterval, wait.NeverStop)
 
+	go m.worker()
+
 	return nil
+}
+
+func (m *qosContainerManagerImpl) worker() {
+	for {
+		<-m.updateCh
+
+		m.Lock()
+		queue := m.queue
+		m.queue = nil
+		m.Unlock()
+
+		if len(queue) != 0 {
+			err := m.updateCgroups()
+
+			for _, item := range queue {
+				item <- err
+			}
+		}
+	}
 }
 
 // setHugePagesUnbounded ensures hugetlb is effectively unbounded
@@ -304,8 +328,19 @@ func (m *qosContainerManagerImpl) setMemoryQoS(configs map[v1.PodQOSClass]*Cgrou
 
 func (m *qosContainerManagerImpl) UpdateCgroups() error {
 	m.Lock()
-	defer m.Unlock()
+	ch := make(chan error, 1)
+	m.queue = append(m.queue, ch)
+	m.Unlock()
 
+	select {
+	case m.updateCh <- true:
+	default:
+	}
+
+	return <-ch
+}
+
+func (m *qosContainerManagerImpl) updateCgroups() error {
 	qosConfigs := map[v1.PodQOSClass]*CgroupConfig{
 		v1.PodQOSGuaranteed: {
 			Name:               m.qosContainersInfo.Guaranteed,

@@ -22,7 +22,9 @@ package cm
 import (
 	"fmt"
 	"strconv"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
@@ -106,7 +108,7 @@ func activeTestPods() []*v1.Pod {
 	}
 }
 
-func createTestQOSContainerManager() (*qosContainerManagerImpl, error) {
+func createTestQOSContainerManager(cgroupManager CgroupManager) (*qosContainerManagerImpl, error) {
 	subsystems, err := GetCgroupSubsystems()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mounted cgroup subsystems: %v", err)
@@ -117,9 +119,10 @@ func createTestQOSContainerManager() (*qosContainerManagerImpl, error) {
 
 	qosContainerManager := &qosContainerManagerImpl{
 		subsystems:    subsystems,
-		cgroupManager: NewCgroupManager(subsystems, "cgroupfs"),
+		cgroupManager: cgroupManager,
 		cgroupRoot:    cgroupRoot,
 		qosReserved:   nil,
+		updateCh:      make(chan interface{}, 1),
 	}
 
 	qosContainerManager.activePods = activeTestPods
@@ -128,7 +131,7 @@ func createTestQOSContainerManager() (*qosContainerManagerImpl, error) {
 }
 
 func TestQoSContainerCgroup(t *testing.T) {
-	m, err := createTestQOSContainerManager()
+	m, err := createTestQOSContainerManager(NewFakeCgroupManager())
 	assert.Nil(t, err)
 
 	qosConfigs := map[v1.PodQOSClass]*CgroupConfig{
@@ -152,4 +155,38 @@ func TestQoSContainerCgroup(t *testing.T) {
 	guaranteedMin := resource.MustParse("128Mi")
 	assert.Equal(t, qosConfigs[v1.PodQOSGuaranteed].ResourceParameters.Unified["memory.min"], strconv.FormatInt(burstableMin.Value()+guaranteedMin.Value(), 10))
 	assert.Equal(t, qosConfigs[v1.PodQOSBurstable].ResourceParameters.Unified["memory.min"], strconv.FormatInt(burstableMin.Value(), 10))
+}
+
+func TestQoSContainerUpdatesOnlyOnce(t *testing.T) {
+	f := NewFakeCgroupManager()
+	m, err := createTestQOSContainerManager(f)
+	assert.Nil(t, err)
+
+	ch := make(chan interface{})
+
+	go func() {
+		var wg sync.WaitGroup
+		wg.Add(5)
+		for i := 0; i < 5; i++ {
+			go func() {
+				m.UpdateCgroups()
+				wg.Done()
+			}()
+		}
+
+		time.Sleep(200 * time.Millisecond)
+
+		go m.worker()
+
+		wg.Wait()
+		close(ch)
+	}()
+
+	select {
+	case <-ch:
+	case <-time.After(5 * time.Second):
+		t.FailNow()
+	}
+
+	assert.NoError(t, f.AssertCalls([]string{"Update", "Update", "Update"}))
 }
