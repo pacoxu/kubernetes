@@ -246,6 +246,7 @@ func (o *PatchOptions) RunPatch() error {
 	if err != nil {
 		return err
 	}
+	klog.V(6).InfoS("before visit.")
 
 	count := 0
 	err = r.Visit(func(info *resource.Info, err error) error {
@@ -267,6 +268,7 @@ func (o *PatchOptions) RunPatch() error {
 				return err
 			}
 
+			klog.V(6).InfoS("helper patch.")
 			helper := resource.
 				NewHelper(client, mapping).
 				DryRun(o.dryRunStrategy == cmdutil.DryRunServer).
@@ -281,6 +283,7 @@ func (o *PatchOptions) RunPatch() error {
 			}
 
 			didPatch := !reflect.DeepEqual(info.Object, patchedObj)
+			klog.V(6).InfoS("printer patchedObj.", "patchedObj", patchedObj)
 
 			// if the recorder makes a change, compute and create another patch
 			if mergePatch, err := o.Recorder.MakeRecordMergePatch(patchedObj); err != nil {
@@ -293,6 +296,7 @@ func (o *PatchOptions) RunPatch() error {
 				}
 			}
 
+			klog.V(6).InfoS("printer patch.")
 			printer, err := o.ToPrinter(patchOperation(didPatch))
 			if err != nil {
 				return err
@@ -300,6 +304,7 @@ func (o *PatchOptions) RunPatch() error {
 			return printer.PrintObj(patchedObj, o.Out)
 		}
 
+		klog.V(6).InfoS("encode object.")
 		originalObjJS, err := runtime.Encode(unstructured.UnstructuredJSONScheme, info.Object)
 		if err != nil {
 			return err
@@ -332,6 +337,7 @@ func (o *PatchOptions) RunPatch() error {
 }
 
 func getPatchedJSON(patchType types.PatchType, originalJS, patchJS []byte, gvk schema.GroupVersionKind, creater runtime.ObjectCreater) ([]byte, error) {
+	klog.V(6).InfoS("get patch json.", "original", originalJS, "patch", patchJS)
 	switch patchType {
 	case types.JSONPatchType:
 		patchObj, err := jsonpatch.DecodePatch(patchJS)
@@ -357,6 +363,7 @@ func getPatchedJSON(patchType types.PatchType, originalJS, patchJS []byte, gvk s
 		if err != nil {
 			return nil, fmt.Errorf("strategic merge patch is not supported for %s locally, try --type merge", gvk.String())
 		}
+		klog.V(6).InfoS("get patch json.", "original", originalJS, "patch", patchJS)
 		return strategicpatch.StrategicMergePatch(originalJS, patchJS, obj)
 
 	default:

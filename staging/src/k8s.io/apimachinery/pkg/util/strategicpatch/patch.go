@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/mergepatch"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 // An alternate implementation of JSON Merge Patch
@@ -1505,7 +1506,7 @@ func mergeSliceWithSpecialElements(original, patch []interface{}, mergeKey strin
 				if ok {
 					var err error
 					original, err = deleteMatchingEntries(original, mergeKey, mergeValue)
-					if err != nil {
+					if original ==nil && err != nil {
 						return nil, nil, err
 					}
 				} else {
@@ -1527,8 +1528,13 @@ func mergeSliceWithSpecialElements(original, patch []interface{}, mergeKey strin
 	return original, patchWithoutSpecialElements, nil
 }
 
+var (
+	warningMergeKeys = sets.NewString("port", "containerPort")
+)
+
 // delete all matching entries (based on merge key) from a merging list
 func deleteMatchingEntries(original []interface{}, mergeKey string, mergeValue interface{}) ([]interface{}, error) {
+	var warning error
 	for {
 		_, originalKey, found, err := findMapInSliceBasedOnKeyValue(original, mergeKey, mergeValue)
 		if err != nil {
@@ -1538,10 +1544,15 @@ func deleteMatchingEntries(original []interface{}, mergeKey string, mergeValue i
 		if !found {
 			break
 		}
+		if warningMergeKeys.Has(mergeKey) {
+			// for port in Service, the merge key should be port and protocol.
+			// for containerPort in Pod's containers, the merge key should be containerPort, hostPort and protocol.
+			warning = fmt.Errorf("deleting entry (based on merge key: %s) from merging list: %s", mergeKey, mergeValue)
+		}
 		// Delete the element at originalKey.
 		original = append(original[:originalKey], original[originalKey+1:]...)
 	}
-	return original, nil
+	return original, warning
 }
 
 // mergeSliceWithoutSpecialElements merges slices with non-special elements.

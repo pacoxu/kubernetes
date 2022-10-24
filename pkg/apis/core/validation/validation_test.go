@@ -7341,6 +7341,20 @@ func TestValidateContainers(t *testing.T) {
 			TerminationMessagePolicy: "File",
 		},
 		{
+			Name:                     "same-container-port-protocol-different-hostport-1",
+			Image:                    "image",
+			Ports:                    []core.ContainerPort{{ContainerPort: 1080, HostPort: 1080, Protocol: "TCP"}},
+			ImagePullPolicy:          "IfNotPresent",
+			TerminationMessagePolicy: "File",
+		},
+		{
+			Name:                     "same-container-port-protocol-different-hostport-2",
+			Image:                    "image",
+			Ports:                    []core.ContainerPort{{ContainerPort: 1080, HostPort: 1081, Protocol: "TCP"}},
+			ImagePullPolicy:          "IfNotPresent",
+			TerminationMessagePolicy: "File",
+		},
+		{
 			Name:                     "fallback-to-logs-termination-message",
 			Image:                    "image",
 			ImagePullPolicy:          "IfNotPresent",
