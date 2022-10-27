@@ -21,6 +21,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	cryptorand "crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -463,10 +464,17 @@ func (m *manager) rotateCerts() (bool, error) {
 		}
 		return false, nil
 	}
+	usages := m.usages
+	if _, ok := privateKey.(*rsa.PrivateKey); ok{
+		// KeyEncipherment allows the cert/key pair to be used to encrypt
+		// keys, including the symmetric keys negotiated during TLS setup
+		// and used for data transfer.
+		usages = append(usages, certificates.UsageKeyEncipherment)
+	}
 
 	// Call the Certificate Signing Request API to get a certificate for the
 	// new private key.
-	reqName, reqUID, err := csr.RequestCertificate(clientSet, csrPEM, "", m.signerName, m.requestedCertificateLifetime, m.usages, privateKey)
+	reqName, reqUID, err := csr.RequestCertificate(clientSet, csrPEM, "", m.signerName, m.requestedCertificateLifetime, usages, privateKey)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("%s: Failed while requesting a signed certificate from the control plane: %v", m.name, err))
 		if m.certificateRenewFailure != nil {
