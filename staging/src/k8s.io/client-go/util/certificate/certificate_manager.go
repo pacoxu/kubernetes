@@ -21,6 +21,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	cryptorand "crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -43,9 +44,44 @@ import (
 	"k8s.io/client-go/util/keyutil"
 )
 
-// certificateWaitTimeout controls the amount of time we wait for certificate
-// approval in one iteration.
-var certificateWaitTimeout = 15 * time.Minute
+var (
+	// certificateWaitTimeout controls the amount of time we wait for certificate
+	// approval in one iteration.
+	certificateWaitTimeout = 15 * time.Minute
+
+	UsagesWithEncipherment = []certificates.KeyUsage{
+		// https://tools.ietf.org/html/rfc5280#section-4.2.1.3
+		//
+		// Digital signature allows the certificate to be used to verify
+		// digital signatures used during TLS negotiation.
+		certificates.UsageDigitalSignature,
+		// KeyEncipherment allows the cert/key pair to be used to encrypt
+		// keys, including the symmetric keys negotiated during TLS setup
+		// and used for data transfer.
+		certificates.UsageKeyEncipherment,
+		// ServerAuth allows the cert to be used by a TLS server to
+		// authenticate itself to a TLS client.
+		certificates.UsageServerAuth,
+	}
+	UsagesNoEncipherment = []certificates.KeyUsage{
+		// https://tools.ietf.org/html/rfc5280#section-4.2.1.3
+		//
+		// Digital signature allows the certificate to be used to verify
+		// digital signatures used during TLS negotiation.
+		certificates.UsageDigitalSignature,
+		// ServerAuth allows the cert to be used by a TLS server to
+		// authenticate itself to a TLS client.
+		certificates.UsageServerAuth,
+	}
+	DefaultGetUsages = func(privateKey interface{}) []certificates.KeyUsage {
+		switch privateKey.(type) {
+		case *rsa.PrivateKey:
+			return UsagesWithEncipherment
+		default:
+			return UsagesNoEncipherment
+		}
+	}
+)
 
 // Manager maintains and updates the certificates in use by this certificate
 // manager. In the background it communicates with the API server to get new
@@ -270,22 +306,7 @@ func NewManager(config *Config) (Manager, error) {
 		name = m.signerName
 	}
 	if len(name) == 0 {
-		var privateKey interface{}
-		currentCert, err := config.CertificateStore.Current()
-		if err != nil {
-			klog.V(4).ErrorS(err, "Failed to get certificate store current cert")
-		} else {
-			keyData, err := keyutil.MarshalPrivateKeyToPEM(currentCert.PrivateKey)
-			if err != nil {
-				klog.V(4).ErrorS(err, "Failed to marshal private key to PEM")
-			} else {
-				privateKey, err = keyutil.ParsePrivateKeyPEM(keyData)
-				if err != nil {
-					klog.V(4).ErrorS(err, "Failed to parse private key")
-				}
-			}
-		}
-		usages := getUsages(privateKey)
+		usages := getUsages(nil)
 		switch {
 		case hasKeyUsage(usages, certificates.UsageClientAuth):
 			name = string(certificates.UsageClientAuth)
@@ -495,7 +516,7 @@ func (m *manager) rotateCerts() (bool, error) {
 	}
 
 	if m.getUsages == nil {
-		m.getUsages = func(interface{}) []certificates.KeyUsage { return []certificates.KeyUsage{} }
+		m.getUsages = DefaultGetUsages
 	}
 	usages := m.getUsages(privateKey)
 	// Call the Certificate Signing Request API to get a certificate for the

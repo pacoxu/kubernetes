@@ -17,7 +17,6 @@ limitations under the License.
 package certificate
 
 import (
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -37,33 +36,6 @@ import (
 	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
 	"k8s.io/kubernetes/pkg/kubelet/metrics"
 	netutils "k8s.io/utils/net"
-)
-
-var (
-	usagesWithEncipherment = []certificates.KeyUsage{
-		// https://tools.ietf.org/html/rfc5280#section-4.2.1.3
-		//
-		// Digital signature allows the certificate to be used to verify
-		// digital signatures used during TLS negotiation.
-		certificates.UsageDigitalSignature,
-		// KeyEncipherment allows the cert/key pair to be used to encrypt
-		// keys, including the symmetric keys negotiated during TLS setup
-		// and used for data transfer.
-		certificates.UsageKeyEncipherment,
-		// ServerAuth allows the cert to be used by a TLS server to
-		// authenticate itself to a TLS client.
-		certificates.UsageServerAuth,
-	}
-	usagesNoEncipherment = []certificates.KeyUsage{
-		// https://tools.ietf.org/html/rfc5280#section-4.2.1.3
-		//
-		// Digital signature allows the certificate to be used to verify
-		// digital signatures used during TLS negotiation.
-		certificates.UsageDigitalSignature,
-		// ServerAuth allows the cert to be used by a TLS server to
-		// authenticate itself to a TLS client.
-		certificates.UsageServerAuth,
-	}
 )
 
 // NewKubeletServerCertificateManager creates a certificate manager for the kubelet when retrieving a server certificate
@@ -133,17 +105,10 @@ func NewKubeletServerCertificateManager(kubeClient clientset.Interface, kubeCfg 
 	}
 
 	m, err := certificate.NewManager(&certificate.Config{
-		ClientsetFn: clientsetFn,
-		GetTemplate: getTemplate,
-		SignerName:  certificates.KubeletServingSignerName,
-		GetUsages: func(privateKey interface{}) []certificates.KeyUsage {
-			switch privateKey.(type) {
-			case *rsa.PrivateKey:
-				return usagesWithEncipherment
-			default:
-				return usagesNoEncipherment
-			}
-		},
+		ClientsetFn:             clientsetFn,
+		GetTemplate:             getTemplate,
+		SignerName:              certificates.KubeletServingSignerName,
+		GetUsages:               certificate.DefaultGetUsages,
 		CertificateStore:        certificateStore,
 		CertificateRotation:     certificateRotationAge,
 		CertificateRenewFailure: certificateRenewFailure,
@@ -252,14 +217,7 @@ func NewKubeletClientCertificateManager(
 			},
 		},
 		SignerName: certificates.KubeAPIServerClientKubeletSignerName,
-		GetUsages: func(privateKey interface{}) []certificates.KeyUsage {
-			switch privateKey.(type) {
-			case *rsa.PrivateKey:
-				return usagesWithEncipherment
-			default:
-				return usagesNoEncipherment
-			}
-		},
+		GetUsages:  certificate.DefaultGetUsages,
 		// For backwards compatibility, the kubelet supports the ability to
 		// provide a higher privileged certificate as initial data that will
 		// then be rotated immediately. This code path is used by kubeadm on

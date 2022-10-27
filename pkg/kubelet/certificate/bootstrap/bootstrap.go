@@ -332,7 +332,6 @@ func requestNodeCertificate(ctx context.Context, client clientset.Interface, pri
 		certificatesv1.UsageDigitalSignature,
 		certificatesv1.UsageClientAuth,
 	}
-
 	if _, ok := privateKey.(*rsa.PrivateKey); ok {
 		usages = append(usages, certificatesv1.UsageKeyEncipherment)
 	}
