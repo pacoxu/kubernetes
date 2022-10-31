@@ -239,8 +239,6 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Extensions().V1beta1().Ingresses().Informer()}, nil
 	case extensionsv1beta1.SchemeGroupVersion.WithResource("networkpolicies"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Extensions().V1beta1().NetworkPolicies().Informer()}, nil
-	case extensionsv1beta1.SchemeGroupVersion.WithResource("podsecuritypolicies"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Extensions().V1beta1().PodSecurityPolicies().Informer()}, nil
 	case extensionsv1beta1.SchemeGroupVersion.WithResource("replicasets"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Extensions().V1beta1().ReplicaSets().Informer()}, nil
 
@@ -309,8 +307,6 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		// Group=policy, Version=v1beta1
 	case policyv1beta1.SchemeGroupVersion.WithResource("poddisruptionbudgets"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Policy().V1beta1().PodDisruptionBudgets().Informer()}, nil
-	case policyv1beta1.SchemeGroupVersion.WithResource("podsecuritypolicies"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Policy().V1beta1().PodSecurityPolicies().Informer()}, nil
 
 		// Group=rbac.authorization.k8s.io, Version=v1
 	case rbacv1.SchemeGroupVersion.WithResource("clusterroles"):
