@@ -41,7 +41,8 @@ const (
 	DefaultCertificatesDir = "/etc/kubernetes/pki"
 	// DefaultImageRepository defines default image registry
 	// (previously this defaulted to k8s.gcr.io)
-	DefaultImageRepository = "registry.k8s.io"
+	DefaultImageRepository       = "registry.k8s.io"
+	LegacyDefaultImageRepository = "k8s.gcr.io"
 	// DefaultManifestsDir defines default manifests directory
 	DefaultManifestsDir = "/etc/kubernetes/manifests"
 	// DefaultClusterName defines the default cluster name
