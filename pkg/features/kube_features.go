@@ -247,14 +247,6 @@ const (
 	// Enables support for Device Plugins
 	DevicePlugins featuregate.Feature = "DevicePlugins"
 
-	// owner: @RenaudWasTaken @dashpole
-	// alpha: v1.19
-	// beta: v1.20
-	// ga: v1.25
-	//
-	// Disables Accelerator Metrics Collected by Kubelet
-	DisableAcceleratorUsageMetrics featuregate.Feature = "DisableAcceleratorUsageMetrics"
-
 	// owner: @andrewsykim
 	// alpha: v1.22
 	//
@@ -976,8 +968,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	DelegateFSGroupToCSIDriver: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
 	DevicePlugins: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // GA in 1.26
-
-	DisableAcceleratorUsageMetrics: {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 
 	DisableCloudProviders: {Default: false, PreRelease: featuregate.Alpha},
 

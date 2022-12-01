@@ -94,11 +94,6 @@ func New(imageFsInfoProvider ImageFsInfoProvider, rootPath string, cgroupRoots [
 		cadvisormetrics.OOMMetrics:          struct{}{},
 	}
 
-	// Only add the Accelerator metrics if the feature is inactive
-	if !utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DisableAcceleratorUsageMetrics) {
-		includedMetrics[cadvisormetrics.AcceleratorUsageMetrics] = struct{}{}
-	}
-
 	if usingLegacyStats || localStorageCapacityIsolation {
 		includedMetrics[cadvisormetrics.DiskUsageMetrics] = struct{}{}
 	}
