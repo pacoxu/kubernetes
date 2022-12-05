@@ -113,7 +113,11 @@ func (m *kubeGenericRuntimeManager) generateLinuxContainerConfig(container *v1.C
 		// for container level cgroup.
 		memoryHigh := int64(0)
 		if memoryLimit != 0 {
-			memoryHigh = int64(float64(memoryLimit) * m.memoryThrottlingFactor)
+			if memoryRequest == 0 {
+				memoryHigh = int64(float64(memoryLimit) * m.memoryThrottlingFactor)
+			} else {
+				memoryHigh = int64(float64(memoryRequest) + (float64(memoryLimit)-float64(memoryRequest))*m.memoryThrottlingFactor)
+			}
 		} else {
 			allocatable := m.getNodeAllocatable()
 			allocatableMemory, ok := allocatable[v1.ResourceMemory]

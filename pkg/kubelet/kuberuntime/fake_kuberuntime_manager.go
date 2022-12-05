@@ -112,7 +112,7 @@ func newFakeKubeRuntimeManager(runtimeService internalapi.RuntimeService, imageS
 		internalLifecycle:      cm.NewFakeInternalContainerLifecycle(),
 		logReduction:           logreduction.NewLogReduction(identicalErrorDelay),
 		logManager:             logManager,
-		memoryThrottlingFactor: 0.8,
+		memoryThrottlingFactor: 0,
 	}
 
 	typedVersion, err := runtimeService.Version(ctx, kubeRuntimeAPIVersion)
