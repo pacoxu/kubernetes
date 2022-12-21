@@ -18,14 +18,27 @@ package apiclient
 
 import (
 	"bytes"
+	"os"
 	"testing"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	rbac "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	core "k8s.io/client-go/testing"
 )
+
+func TestDiscoveryServerVersion(t *testing.T) {
+	dryRunGetter := &InitDryRunGetter{
+		controlPlaneName: "controlPlane",
+		serviceSubnet:    "serviceSubnet",
+	}
+	c := NewDryRunClient(dryRunGetter, os.Stdout)
+	_, err := c.Discovery().ServerVersion()
+	if err != nil {
+		t.Fatalf("Get ServerVersion failed.: %v", err)
+	}
+}
 
 func TestLogDryRunAction(t *testing.T) {
 	var tests = []struct {
@@ -52,6 +65,7 @@ func TestLogDryRunAction(t *testing.T) {
 			name:   "action LIST on services",
 			action: core.NewListAction(schema.GroupVersionResource{Version: "v1", Resource: "services"}, schema.GroupVersionKind{Version: "v1", Kind: "Service"}, "default", metav1.ListOptions{}),
 			expectedBytes: []byte(`[dryrun] Would perform action LIST on resource "services" in API group "core/v1"
+[dryrun] Resource name: ""
 `),
 		},
 		{
@@ -65,6 +79,7 @@ func TestLogDryRunAction(t *testing.T) {
 				},
 			}),
 			expectedBytes: []byte(`[dryrun] Would perform action CREATE on resource "services" in API group "core/v1"
+[dryrun] Resource name: ""
 	apiVersion: v1
 	kind: Service
 	metadata:

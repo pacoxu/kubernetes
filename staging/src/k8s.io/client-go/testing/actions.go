@@ -432,9 +432,14 @@ type ProxyGetAction interface {
 
 type ActionImpl struct {
 	Namespace   string
+	Name        string
 	Verb        string
 	Resource    schema.GroupVersionResource
 	Subresource string
+}
+
+func (a ActionImpl) GetName() string {
+	return a.Name
 }
 
 func (a ActionImpl) GetNamespace() string {

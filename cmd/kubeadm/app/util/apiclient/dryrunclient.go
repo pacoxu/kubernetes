@@ -120,7 +120,7 @@ func NewDryRunClientWithOpts(opts DryRunClientOptions) clientset.Interface {
 				getAction, ok := action.(core.GetAction)
 				if !ok {
 					// something's wrong, we can't handle this event
-					return true, nil, errors.New("can't cast get reactor event action object to GetAction interface")
+					return true, nil, errors.New(fmt.Sprintf("can't cast get reactor event action object of type %T to GetAction interface", action))
 				}
 				handled, obj, err := opts.Getter.HandleGetAction(getAction)
 
