@@ -30,6 +30,7 @@ import (
 	"sync"
 
 	"golang.org/x/sys/unix"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util/fsquota/common"
 )
 
@@ -184,10 +185,13 @@ func findAvailableQuota(path string, idMap map[common.QuotaID]bool) (common.Quot
 }
 
 func addDirToProject(path string, id common.QuotaID, list *projectsList) (common.QuotaID, bool, error) {
+	klog.V(2).Infof("(pacoxu)addDirToProject project ID", "id", id, "path", path)
 	idMap := make(map[common.QuotaID]bool)
 	for _, project := range list.projects {
-		if project.data == path {
+		klog.V(2).Infof("(pacoxu)id with project ID", "id", id, "projectId", project.id)
+		if project.data == path && id != common.BadQuotaID {
 			if id != project.id {
+				klog.V(2).Infof("(pacoxu)reassign project ID", "id", id, "projectId", project.id)
 				return common.BadQuotaID, false, fmt.Errorf("attempt to reassign project ID for %s", path)
 			}
 			// Trying to reassign a directory to the project it's

@@ -39,7 +39,7 @@ import (
 var podQuotaMap = make(map[types.UID]common.QuotaID)
 
 // Pod -> Pod UID
-var podUIDMap = make(map[types.UID]types.UID)
+var podToUIDMap = make(map[types.UID]types.UID)
 
 // Dir -> ID (for convenience)
 var dirQuotaMap = make(map[string]common.QuotaID)
@@ -323,9 +323,9 @@ func AssignQuota(m mount.Interface, path string, poduid types.UID, bytes *resour
 	// If and when we decide permanently that we're going to adopt
 	// one quota per volume, we can rip all of the pod code out.
 	newpoduid := types.UID(uuid.NewUUID()) //nolint:staticcheck // SA4009 poduid is overwritten by design, see comment above
-	podUIDMap[newpoduid] = poduid
-	if pod, ok := dirPodMap[path]; ok && pod != newpoduid {
-		return fmt.Errorf("requesting quota on existing directory %s but different pod %s %s", path, pod, newpoduid)
+	podToUIDMap[newpoduid] = poduid
+	if pod, ok := dirPodMap[path]; ok {
+		klog.V(2).ErrorS(fmt.Errorf("requesting quota on existing directory"), "path", path, "podUid", pod, "newPodUid", newpoduid)
 	}
 	oid, ok := podQuotaMap[newpoduid]
 	if ok {
@@ -440,9 +440,9 @@ func ClearQuota(m mount.Interface, path string) error {
 		delete(quotaPodMap, podQuotaMap[poduid])
 		delete(podDirCountMap, poduid)
 		delete(podQuotaMap, poduid)
-		for podnewuid, uid := range podUIDMap {
+		for podnewuid, uid := range podToUIDMap {
 			if uid == poduid {
-				delete(podUIDMap, podnewuid)
+				delete(podToUIDMap, podnewuid)
 			}
 		}
 	} else {
