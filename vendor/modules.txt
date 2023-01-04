@@ -269,8 +269,8 @@ github.com/fsnotify/fsnotify
 # github.com/fvbommel/sortorder v1.0.1
 ## explicit; go 1.13
 github.com/fvbommel/sortorder
-# github.com/go-errors/errors v1.0.1
-## explicit
+# github.com/go-errors/errors v1.4.2
+## explicit; go 1.14
 github.com/go-errors/errors
 # github.com/go-logr/logr v1.2.3
 ## explicit; go 1.16
@@ -289,8 +289,8 @@ github.com/go-openapi/jsonpointer
 ## explicit; go 1.13
 github.com/go-openapi/jsonreference
 github.com/go-openapi/jsonreference/internal
-# github.com/go-openapi/swag v0.19.14
-## explicit; go 1.11
+# github.com/go-openapi/swag v0.22.3
+## explicit; go 1.18
 github.com/go-openapi/swag
 # github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0
 ## explicit; go 1.13
@@ -518,7 +518,7 @@ github.com/liggitt/tabwriter
 # github.com/lithammer/dedent v1.1.0
 ## explicit
 github.com/lithammer/dedent
-# github.com/mailru/easyjson v0.7.6
+# github.com/mailru/easyjson v0.7.7
 ## explicit; go 1.12
 github.com/mailru/easyjson/buffer
 github.com/mailru/easyjson/jlexer
@@ -2456,7 +2456,7 @@ sigs.k8s.io/kustomize/api/types
 # sigs.k8s.io/kustomize/kustomize/v4 v4.5.7
 ## explicit; go 1.18
 sigs.k8s.io/kustomize/kustomize/v4/commands/build
-# sigs.k8s.io/kustomize/kyaml v0.13.9
+# sigs.k8s.io/kustomize/kyaml v0.13.10
 ## explicit; go 1.18
 sigs.k8s.io/kustomize/kyaml/comments
 sigs.k8s.io/kustomize/kyaml/errors
@@ -2474,7 +2474,7 @@ sigs.k8s.io/kustomize/kyaml/kio/filters
 sigs.k8s.io/kustomize/kyaml/kio/kioutil
 sigs.k8s.io/kustomize/kyaml/openapi
 sigs.k8s.io/kustomize/kyaml/openapi/kubernetesapi
-sigs.k8s.io/kustomize/kyaml/openapi/kubernetesapi/v1212
+sigs.k8s.io/kustomize/kyaml/openapi/kubernetesapi/v1_21_2
 sigs.k8s.io/kustomize/kyaml/openapi/kustomizationapi
 sigs.k8s.io/kustomize/kyaml/order
 sigs.k8s.io/kustomize/kyaml/resid
