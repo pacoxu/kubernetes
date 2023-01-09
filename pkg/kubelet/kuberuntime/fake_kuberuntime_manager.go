@@ -136,6 +136,7 @@ func newFakeKubeRuntimeManager(runtimeService internalapi.RuntimeService, imageS
 		0,
 		&fakePodPullingTimeRecorder{},
 		nil,
+		"/var/lib/kubelet",
 	)
 	kubeRuntimeManager.runner = lifecycle.NewHandlerRunner(
 		&fakeHTTP{},

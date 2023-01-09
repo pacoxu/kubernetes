@@ -247,7 +247,7 @@ func pullerTestEnv(t *testing.T, c pullerTestCase, serialized bool, maxParallelI
 	fakeRuntime.InspectErr = c.inspectErr
 
 	fakePodPullingTimeRecorder = &mockPodPullingTimeRecorder{}
-	puller = NewImageManager(fakeRecorder, fakeRuntime, backOff, serialized, maxParallelImagePulls, c.qps, c.burst, fakePodPullingTimeRecorder, nil)
+	puller = NewImageManager(fakeRecorder, fakeRuntime, backOff, serialized, maxParallelImagePulls, c.qps, c.burst, fakePodPullingTimeRecorder, nil, "/var/lib/kubelet")
 	return
 }
 

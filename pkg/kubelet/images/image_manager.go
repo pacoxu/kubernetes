@@ -40,13 +40,26 @@ import (
 	"k8s.io/kubernetes/pkg/util/parsers"
 )
 
-type ensureSecretPulledImageDigest struct {
-	// TODO: (mikebrow) time of last pull for this imageRef
-	// TODO: (mikebrow) time of pull for each particular auth hash
-	//       note @mrunalp makes a good point that we can utilize /apimachinery/pkg/util/sets/string.go here
+const (
+	// secretPulledImageFileName is the file name where image manager stores state for ensured secret pulled image digeset
+	secretPulledImageFileName = "image_manager_state"
+	ensuredExpirationDuration = 1 * time.Hour
+)
 
-	// map of auth hash (keys) used to successfully pull this imageref
-	HashMatch map[string]bool
+type EnsuredBySecret struct {
+	// true for ensured secret
+	Ensured bool `json:"ensured"`
+	// the secret should be verified again if the dueDate is before now()
+	// and the due date is 1 hour after ensured. See const `ensuredExpirationDuration`.
+	DueDate time.Time `json:"dueDate"`
+}
+
+type ensuredSecretPulledImageDigest struct {
+	// map of auth hash (keys) used to successfully pull this imageref;
+	// there is a due date in EnsuredBySecret which is 1 hour later after ensured
+	HashMatch map[string]*EnsuredBySecret `json:"authHash"`
+
+	ImageName string `json:"name"`
 }
 
 type ImagePodPullingTimeRecorder interface {
@@ -65,15 +78,16 @@ type imageManager struct {
 	podPullingTimeRecorder ImagePodPullingTimeRecorder
 
 	keyring *credentialprovider.DockerKeyring
-	// ensureSecretPulledImage - map of imageref (image digest) to successful secret pulled image details
-	ensureSecretPulledImage map[string]*ensureSecretPulledImageDigest
-	lock                    sync.RWMutex
+
+	lock sync.RWMutex
+
+	state ImageState
 }
 
 var _ ImageManager = &imageManager{}
 
 // NewImageManager instantiates a new ImageManager object.
-func NewImageManager(recorder record.EventRecorder, imageService kubecontainer.ImageService, imageBackOff *flowcontrol.Backoff, serialized bool, maxParallelImagePulls *int32, qps float32, burst int, podPullingTimeRecorder ImagePodPullingTimeRecorder, keyring *credentialprovider.DockerKeyring) ImageManager {
+func NewImageManager(recorder record.EventRecorder, imageService kubecontainer.ImageService, imageBackOff *flowcontrol.Backoff, serialized bool, maxParallelImagePulls *int32, qps float32, burst int, podPullingTimeRecorder ImagePodPullingTimeRecorder, keyring *credentialprovider.DockerKeyring, stateFileDirectory string) ImageManager {
 	imageService = throttleImagePulling(imageService, qps, burst)
 
 	var puller imagePuller
@@ -82,14 +96,20 @@ func NewImageManager(recorder record.EventRecorder, imageService kubecontainer.I
 	} else {
 		puller = newParallelImagePuller(imageService, maxParallelImagePulls)
 	}
+
+	stateImpl, err := NewCheckpointState(stateFileDirectory, secretPulledImageFileName)
+	if err != nil {
+		klog.ErrorS(err, "Could not initialize checkpoint manager.")
+	}
+
 	return &imageManager{
-		recorder:                recorder,
-		imageService:            imageService,
-		backOff:                 imageBackOff,
-		puller:                  puller,
-		podPullingTimeRecorder:  podPullingTimeRecorder,
-		keyring:                 keyring,
-		ensureSecretPulledImage: make(map[string]*ensureSecretPulledImageDigest),
+		recorder:               recorder,
+		imageService:           imageService,
+		backOff:                imageBackOff,
+		puller:                 puller,
+		podPullingTimeRecorder: podPullingTimeRecorder,
+		keyring:                keyring,
+		state:                  stateImpl,
 	}
 }
 
@@ -124,6 +144,17 @@ func shouldPullImage(container *v1.Container, imagePresent, pulledBySecret, ensu
 		}
 	}
 	return false
+}
+
+func (e *ensuredSecretPulledImageDigest) Clone() *ensuredSecretPulledImageDigest {
+	c := &ensuredSecretPulledImageDigest{
+		HashMatch: make(map[string]*EnsuredBySecret),
+	}
+	for k, v := range e.HashMatch {
+		c.HashMatch[k] = v
+	}
+	c.ImageName = e.ImageName
+	return c
 }
 
 // records an event using ref, event msg.  log to glog using prefix, msg, logFn
@@ -175,7 +206,11 @@ func (m *imageManager) EnsureImageExists(ctx context.Context, pod *v1.Pod, conta
 
 	present := imageRef != ""
 
-	pulledBySecret, ensuredBySecret := m.isEnsuredBySecret(imageRef, spec, pullSecrets)
+	var pulledBySecret, ensuredBySecret bool
+	if present {
+		pulledBySecret, ensuredBySecret = m.isEnsuredBySecret(imageRef, spec, pullSecrets)
+		klog.V(5).InfoS("Get ensured check by securet", "image", image, "imageRef", imageRef, "pulledBySecret", pulledBySecret, "ensuredBySecret", ensuredBySecret)
+	}
 
 	if !shouldPullImage(container, present, pulledBySecret, ensuredBySecret) {
 		// should not pull when pull never, or if present and correctly authenticated
@@ -224,16 +259,13 @@ func (m *imageManager) EnsureImageExists(ctx context.Context, pod *v1.Pod, conta
 		// successful pull no auth hash returned, auth was not required so we should reset the hashmap for this
 		// imageref since auth is no longer required for the local image cache, allowing use of the ImageRef
 		// by other pods if it remains cached and pull policy is PullIfNotPresent
-		delete(m.ensureSecretPulledImage, imageRef)
+		klog.V(4).InfoS("Delete ensured image", "image", image, "imageRef", imagePullResult.imageRef)
+		m.state.DeleteEnsuredImage(imagePullResult.imageRef)
 	} else {
 		// store/create hashMatch map entry for auth config hash key used to pull the image
 		// for this imageref (digest)
-		digest, ok := m.ensureSecretPulledImage[imageRef]
-		if !ok {
-			digest = &ensureSecretPulledImageDigest{HashMatch: make(map[string]bool)}
-			m.ensureSecretPulledImage[imageRef] = digest
-		}
-		digest.HashMatch[imagePullResult.pullCredentialsHash] = true
+		klog.V(4).InfoS("Set ensured image", "image", image, "imageRef", imagePullResult.imageRef, "authHash", imagePullResult.pullCredentialsHash)
+		m.state.SetEnsured(imagePullResult.imageRef, image, imagePullResult.pullCredentialsHash, true)
 	}
 	m.lock.Unlock()
 
@@ -299,9 +331,7 @@ func (m *imageManager) isEnsuredBySecret(imageRef string, image kubecontainer.Im
 	if imageRef == "" {
 		return
 	}
-	if m.ensureSecretPulledImage[imageRef] != nil {
-		pulledBySecret = true
-	}
+	pulledBySecret = m.state.GetEnsuredImage(imageRef)
 
 	img := image.Image
 	repoToPull, _, _, err := parsers.ParseImageName(img)
@@ -334,12 +364,9 @@ func (m *imageManager) isEnsuredBySecret(imageRef string, image kubecontainer.Im
 
 		hash := kubecontainer.HashAuth(auth)
 		if hash != "" {
-			digest, ok := m.ensureSecretPulledImage[imageRef]
-			if ok {
-				if digest.HashMatch[hash] {
-					ensuredBySecret = true
-					return
-				}
+			ensuredBySecret = m.state.GetEnsuredImageWithHash(imageRef, hash)
+			if ensuredBySecret {
+				return
 			}
 		}
 	}

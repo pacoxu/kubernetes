@@ -75,7 +75,7 @@ func TestPullImageWithInvalidImageName(t *testing.T) {
 	fakeImageService.SetFakeImages(imageList)
 	for _, val := range imageList {
 		ctx := context.Background()
-		imageRef, err := fakeManager.PullImage(ctx, kubecontainer.ImageSpec{Image: val}, nil, nil)
+		imageRef, _, err := fakeManager.PullImage(ctx, kubecontainer.ImageSpec{Image: val}, nil, nil)
 		assert.Error(t, err)
 		assert.Equal(t, "", imageRef)
 
