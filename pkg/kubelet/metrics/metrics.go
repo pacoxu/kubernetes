@@ -197,6 +197,26 @@ var (
 			StabilityLevel: metrics.ALPHA,
 		},
 	)
+
+	// 	Apart from that cluster admins can monitor the state of evented PLEG's connection with the CRI runtime using following metrics,
+
+	// * `evented_pleg_connection_error_count` - The count of errors encountered during the establishment of streaming connection with the CRI runtime.
+	// * `evented_pleg_connection_success_count` - The count of successful streaming connections with the CRI runtime.
+	// * `evented_pleg_connection_latency_seconds` - The latency of streaming connection with the CRI runtime, measured in seconds.
+	// * `evented_pleg_notifications_received` - The number of notifications received through streaming connection with the CRI runtime.
+
+	// PLEGConnectionErrorCount is a Counter that tracks errors encountered during the establishment of streaming connection with the CRI runtime
+	// in the Kubelet's Pod Lifecycle Event Generator (PLEG).
+	PLEGConnectionErrorCount = metrics.NewCounterVec(
+		&metrics.CounterOpts{
+			Subsystem:      KubeletSubsystem,
+			Name:           PLEGConnectionErrorCountKey,
+			Help:           "Cumulative number of pod preemptions by preemption resource",
+			StabilityLevel: metrics.ALPHA,
+		},
+		[]string{"??"},
+	)
+
 	// PLEGRelistDuration is a Histogram that tracks the duration (in seconds) it takes for relisting pods in the Kubelet's
 	// Pod Lifecycle Event Generator (PLEG).
 	PLEGRelistDuration = metrics.NewHistogram(
