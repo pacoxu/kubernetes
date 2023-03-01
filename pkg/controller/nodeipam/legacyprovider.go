@@ -20,6 +20,7 @@ limitations under the License.
 package nodeipam
 
 import (
+	"fmt"
 	"net"
 
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -62,7 +63,8 @@ func createLegacyIPAM(
 	}
 	ipamc, err := ipam.NewController(cfg, kubeClient, cloud, cidr, serviceCIDR, nodeCIDRMaskSizes[0])
 	if err != nil {
-		klog.Fatalf("Error creating ipam controller: %v", err)
+		klog.Warningf("Error creating ipam controller: %v", err)
+		panic(fmt.Sprintf("Error creating ipam controller: %v", err))
 	}
 	if err := ipamc.Start(nodeInformer); err != nil {
 		klog.Fatalf("Error trying to Init(): %v", err)
