@@ -17,6 +17,7 @@ limitations under the License.
 package nodeipam
 
 import (
+	"errors"
 	"net"
 	"time"
 
@@ -96,15 +97,13 @@ func NewNodeIpamController(
 	// Cloud CIDR allocator does not rely on clusterCIDR or nodeCIDRMaskSize for allocation.
 	if allocatorType != ipam.CloudAllocatorType {
 		if len(clusterCIDRs) == 0 {
-			klog.Warning("Controller: Must specify --cluster-cidr if --allocate-node-cidrs is set")
-			panic("Controller: Must specify --cluster-cidr if --allocate-node-cidrs is set")
+			return nil, errors.New("Controller: Must specify --cluster-cidr if --allocate-node-cidrs is set")
 		}
 
 		for idx, cidr := range clusterCIDRs {
 			mask := cidr.Mask
 			if maskSize, _ := mask.Size(); maskSize > nodeCIDRMaskSizes[idx] {
-				klog.Warning("Controller: Invalid --cluster-cidr, mask size of cluster CIDR must be less than or equal to --node-cidr-mask-size configured for CIDR family")
-				panic("Controller: Invalid --cluster-cidr, mask size of cluster CIDR must be less than or equal to --node-cidr-mask-size configured for CIDR family")
+				return nil, errors.New("Controller: Invalid --cluster-cidr, mask size of cluster CIDR must be less than or equal to --node-cidr-mask-size configured for CIDR family")
 			}
 		}
 	}
@@ -122,7 +121,11 @@ func NewNodeIpamController(
 
 	// TODO: Abstract this check into a generic controller manager should run method.
 	if ic.allocatorType == ipam.IPAMFromClusterAllocatorType || ic.allocatorType == ipam.IPAMFromCloudAllocatorType {
-		ic.legacyIPAM = createLegacyIPAM(ic, nodeInformer, cloud, kubeClient, clusterCIDRs, serviceCIDR, nodeCIDRMaskSizes)
+		var err error
+		ic.legacyIPAM, err = createLegacyIPAM(ic, nodeInformer, cloud, kubeClient, clusterCIDRs, serviceCIDR, nodeCIDRMaskSizes)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		var err error
 

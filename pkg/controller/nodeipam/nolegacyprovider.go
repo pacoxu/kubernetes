@@ -43,7 +43,7 @@ func createLegacyIPAM(
 	clusterCIDRs []*net.IPNet,
 	serviceCIDR *net.IPNet,
 	nodeCIDRMaskSizes []int,
-) *fakeController {
+) (*fakeController, error) {
 	klog.Fatal("Error trying to Init(): legacy cloud provider support disabled at build time")
-	return &fakeController{}
+	return &fakeController{}, nil
 }
