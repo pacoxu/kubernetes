@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
-	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	appsv1beta2 "k8s.io/api/apps/v1beta2"
 	batchv1 "k8s.io/api/batch/v1"
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
@@ -42,8 +41,6 @@ func updatePodSpecForObject(obj runtime.Object, fn func(*v1.PodSpec) error) (boo
 
 		// Deployment
 	case *extensionsv1beta1.Deployment:
-		return true, fn(&t.Spec.Template.Spec)
-	case *appsv1beta1.Deployment:
 		return true, fn(&t.Spec.Template.Spec)
 	case *appsv1beta2.Deployment:
 		return true, fn(&t.Spec.Template.Spec)

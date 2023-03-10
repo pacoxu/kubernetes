@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
-	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	appsv1beta2 "k8s.io/api/apps/v1beta2"
 	batchv1 "k8s.io/api/batch/v1"
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
@@ -45,10 +44,6 @@ func TestUpdatePodSpecForObject(t *testing.T) {
 		},
 		{
 			object: &extensionsv1beta1.Deployment{},
-			expect: true,
-		},
-		{
-			object: &appsv1beta1.Deployment{},
 			expect: true,
 		},
 		{
@@ -80,10 +75,6 @@ func TestUpdatePodSpecForObject(t *testing.T) {
 		},
 		{
 			object: &appsv1.ReplicaSet{},
-			expect: true,
-		},
-		{
-			object: &appsv1beta1.StatefulSet{},
 			expect: true,
 		},
 		{

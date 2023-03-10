@@ -23,7 +23,6 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
-	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	appsv1beta2 "k8s.io/api/apps/v1beta2"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -112,12 +111,6 @@ func SelectorsForObject(object runtime.Object) (namespace string, selector label
 		if err != nil {
 			return "", nil, fmt.Errorf("invalid label selector: %v", err)
 		}
-	case *appsv1beta1.StatefulSet:
-		namespace = t.Namespace
-		selector, err = metav1.LabelSelectorAsSelector(t.Spec.Selector)
-		if err != nil {
-			return "", nil, fmt.Errorf("invalid label selector: %v", err)
-		}
 	case *appsv1beta2.StatefulSet:
 		namespace = t.Namespace
 		selector, err = metav1.LabelSelectorAsSelector(t.Spec.Selector)
@@ -151,12 +144,6 @@ func SelectorsForObject(object runtime.Object) (namespace string, selector label
 			return "", nil, fmt.Errorf("invalid label selector: %v", err)
 		}
 	case *appsv1.Deployment:
-		namespace = t.Namespace
-		selector, err = metav1.LabelSelectorAsSelector(t.Spec.Selector)
-		if err != nil {
-			return "", nil, fmt.Errorf("invalid label selector: %v", err)
-		}
-	case *appsv1beta1.Deployment:
 		namespace = t.Namespace
 		selector, err = metav1.LabelSelectorAsSelector(t.Spec.Selector)
 		if err != nil {

@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
-	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	appsv1beta2 "k8s.io/api/apps/v1beta2"
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -51,13 +50,6 @@ func defaultObjectPauser(obj runtime.Object) ([]byte, error) {
 		}
 		obj.Spec.Paused = true
 		return runtime.Encode(scheme.Codecs.LegacyCodec(appsv1beta2.SchemeGroupVersion), obj)
-
-	case *appsv1beta1.Deployment:
-		if obj.Spec.Paused {
-			return nil, errors.New("is already paused")
-		}
-		obj.Spec.Paused = true
-		return runtime.Encode(scheme.Codecs.LegacyCodec(appsv1beta1.SchemeGroupVersion), obj)
 
 	default:
 		return nil, fmt.Errorf("pausing is not supported")

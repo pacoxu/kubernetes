@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apivalidation "k8s.io/apimachinery/pkg/api/validation"
@@ -142,7 +141,7 @@ func (deploymentStrategy) ValidateUpdate(ctx context.Context, obj, old runtime.O
 	if requestInfo, found := genericapirequest.RequestInfoFrom(ctx); found {
 		groupVersion := schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}
 		switch groupVersion {
-		case appsv1beta1.SchemeGroupVersion, extensionsv1beta1.SchemeGroupVersion:
+		case extensionsv1beta1.SchemeGroupVersion:
 			// no-op for compatibility
 		default:
 			// disallow mutation of selector

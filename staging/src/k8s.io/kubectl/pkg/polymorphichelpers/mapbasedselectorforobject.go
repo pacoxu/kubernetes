@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
-	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	appsv1beta2 "k8s.io/api/apps/v1beta2"
 	corev1 "k8s.io/api/core/v1"
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
@@ -80,18 +79,6 @@ func mapBasedSelectorForObject(object runtime.Object) (string, error) {
 		return MakeLabels(t.Spec.Selector.MatchLabels), nil
 
 	case *appsv1beta2.Deployment:
-		// "apps" deployments must have the selector set.
-		if t.Spec.Selector == nil || len(t.Spec.Selector.MatchLabels) == 0 {
-			return "", fmt.Errorf("invalid deployment: no selectors, therefore cannot be exposed")
-		}
-		// TODO(madhusudancs): Make this smarter by admitting MatchExpressions with Equals
-		// operator, DoubleEquals operator and In operator with only one element in the set.
-		if len(t.Spec.Selector.MatchExpressions) > 0 {
-			return "", fmt.Errorf("couldn't convert expressions - \"%+v\" to map-based selector format", t.Spec.Selector.MatchExpressions)
-		}
-		return MakeLabels(t.Spec.Selector.MatchLabels), nil
-
-	case *appsv1beta1.Deployment:
 		// "apps" deployments must have the selector set.
 		if t.Spec.Selector == nil || len(t.Spec.Selector.MatchLabels) == 0 {
 			return "", fmt.Errorf("invalid deployment: no selectors, therefore cannot be exposed")

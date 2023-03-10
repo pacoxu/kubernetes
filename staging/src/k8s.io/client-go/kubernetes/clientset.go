@@ -28,7 +28,6 @@ import (
 	admissionregistrationv1beta1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1"
 	internalv1alpha1 "k8s.io/client-go/kubernetes/typed/apiserverinternal/v1alpha1"
 	appsv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
-	appsv1beta1 "k8s.io/client-go/kubernetes/typed/apps/v1beta1"
 	appsv1beta2 "k8s.io/client-go/kubernetes/typed/apps/v1beta2"
 	authenticationv1 "k8s.io/client-go/kubernetes/typed/authentication/v1"
 	authenticationv1alpha1 "k8s.io/client-go/kubernetes/typed/authentication/v1alpha1"
@@ -84,7 +83,6 @@ type Interface interface {
 	AdmissionregistrationV1beta1() admissionregistrationv1beta1.AdmissionregistrationV1beta1Interface
 	InternalV1alpha1() internalv1alpha1.InternalV1alpha1Interface
 	AppsV1() appsv1.AppsV1Interface
-	AppsV1beta1() appsv1beta1.AppsV1beta1Interface
 	AppsV1beta2() appsv1beta2.AppsV1beta2Interface
 	AuthenticationV1() authenticationv1.AuthenticationV1Interface
 	AuthenticationV1alpha1() authenticationv1alpha1.AuthenticationV1alpha1Interface
@@ -139,7 +137,6 @@ type Clientset struct {
 	admissionregistrationV1beta1  *admissionregistrationv1beta1.AdmissionregistrationV1beta1Client
 	internalV1alpha1              *internalv1alpha1.InternalV1alpha1Client
 	appsV1                        *appsv1.AppsV1Client
-	appsV1beta1                   *appsv1beta1.AppsV1beta1Client
 	appsV1beta2                   *appsv1beta2.AppsV1beta2Client
 	authenticationV1              *authenticationv1.AuthenticationV1Client
 	authenticationV1alpha1        *authenticationv1alpha1.AuthenticationV1alpha1Client
@@ -209,11 +206,6 @@ func (c *Clientset) InternalV1alpha1() internalv1alpha1.InternalV1alpha1Interfac
 // AppsV1 retrieves the AppsV1Client
 func (c *Clientset) AppsV1() appsv1.AppsV1Interface {
 	return c.appsV1
-}
-
-// AppsV1beta1 retrieves the AppsV1beta1Client
-func (c *Clientset) AppsV1beta1() appsv1beta1.AppsV1beta1Interface {
-	return c.appsV1beta1
 }
 
 // AppsV1beta2 retrieves the AppsV1beta2Client
@@ -500,10 +492,6 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	cs.appsV1beta1, err = appsv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
-	if err != nil {
-		return nil, err
-	}
 	cs.appsV1beta2, err = appsv1beta2.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
@@ -706,7 +694,6 @@ func New(c rest.Interface) *Clientset {
 	cs.admissionregistrationV1beta1 = admissionregistrationv1beta1.New(c)
 	cs.internalV1alpha1 = internalv1alpha1.New(c)
 	cs.appsV1 = appsv1.New(c)
-	cs.appsV1beta1 = appsv1beta1.New(c)
 	cs.appsV1beta2 = appsv1beta2.New(c)
 	cs.authenticationV1 = authenticationv1.New(c)
 	cs.authenticationV1alpha1 = authenticationv1alpha1.New(c)

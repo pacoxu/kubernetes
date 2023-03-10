@@ -35,7 +35,6 @@ import (
 	"k8s.io/apiserver/pkg/util/dryrun"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/apis/apps"
-	appsv1beta1 "k8s.io/kubernetes/pkg/apis/apps/v1beta1"
 	appsv1beta2 "k8s.io/kubernetes/pkg/apis/apps/v1beta2"
 	appsvalidation "k8s.io/kubernetes/pkg/apis/apps/validation"
 	"k8s.io/kubernetes/pkg/apis/autoscaling"
@@ -282,8 +281,6 @@ func (r *ScaleREST) GroupVersionKind(containingGV schema.GroupVersion) schema.Gr
 	switch containingGV {
 	case extensionsv1beta1.SchemeGroupVersion:
 		return extensionsv1beta1.SchemeGroupVersion.WithKind("Scale")
-	case appsv1beta1.SchemeGroupVersion:
-		return appsv1beta1.SchemeGroupVersion.WithKind("Scale")
 	case appsv1beta2.SchemeGroupVersion:
 		return appsv1beta2.SchemeGroupVersion.WithKind("Scale")
 	default:

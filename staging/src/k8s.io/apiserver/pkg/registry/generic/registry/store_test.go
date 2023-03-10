@@ -2493,13 +2493,12 @@ type fakeStrategy struct {
 }
 
 func (fakeStrategy) DefaultGarbageCollectionPolicy(ctx context.Context) rest.GarbageCollectionPolicy {
-	appsv1beta1 := schema.GroupVersion{Group: "apps", Version: "v1beta1"}
 	appsv1beta2 := schema.GroupVersion{Group: "apps", Version: "v1beta2"}
 	extensionsv1beta1 := schema.GroupVersion{Group: "extensions", Version: "v1beta1"}
 	if requestInfo, found := genericapirequest.RequestInfoFrom(ctx); found {
 		groupVersion := schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}
 		switch groupVersion {
-		case appsv1beta1, appsv1beta2, extensionsv1beta1:
+		case appsv1beta2, extensionsv1beta1:
 			// for back compatibility
 			return rest.OrphanDependents
 		default:

@@ -31,7 +31,6 @@ import (
 	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/apis/apps"
-	appsv1beta1 "k8s.io/kubernetes/pkg/apis/apps/v1beta1"
 	appsv1beta2 "k8s.io/kubernetes/pkg/apis/apps/v1beta2"
 	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	autoscalingv1 "k8s.io/kubernetes/pkg/apis/autoscaling/v1"
@@ -172,8 +171,6 @@ var _ = rest.GroupVersionKindProvider(&ScaleREST{})
 // GroupVersionKind returns GroupVersionKind for StatefulSet Scale object
 func (r *ScaleREST) GroupVersionKind(containingGV schema.GroupVersion) schema.GroupVersionKind {
 	switch containingGV {
-	case appsv1beta1.SchemeGroupVersion:
-		return appsv1beta1.SchemeGroupVersion.WithKind("Scale")
 	case appsv1beta2.SchemeGroupVersion:
 		return appsv1beta2.SchemeGroupVersion.WithKind("Scale")
 	default:

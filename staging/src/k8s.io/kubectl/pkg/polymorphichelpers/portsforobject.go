@@ -21,7 +21,6 @@ import (
 	"strconv"
 
 	appsv1 "k8s.io/api/apps/v1"
-	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	appsv1beta2 "k8s.io/api/apps/v1beta2"
 	corev1 "k8s.io/api/core/v1"
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
@@ -44,8 +43,6 @@ func portsForObject(object runtime.Object) ([]string, error) {
 	case *appsv1.Deployment:
 		return getPorts(t.Spec.Template.Spec), nil
 	case *appsv1beta2.Deployment:
-		return getPorts(t.Spec.Template.Spec), nil
-	case *appsv1beta1.Deployment:
 		return getPorts(t.Spec.Template.Spec), nil
 
 	case *extensionsv1beta1.ReplicaSet:

@@ -24,7 +24,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
-	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	appsv1beta2 "k8s.io/api/apps/v1beta2"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -227,14 +226,6 @@ func TestSetServiceAccountRemote(t *testing.T) {
 			args:         []string{"deployment", "nginx", serviceAccount},
 		},
 		{
-			object: &appsv1beta1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
-			},
-			groupVersion: appsv1beta1.SchemeGroupVersion,
-			path:         "/namespaces/test/deployments/nginx",
-			args:         []string{"deployment", "nginx", serviceAccount},
-		},
-		{
 			object: &appsv1beta2.Deployment{
 				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
 			},
@@ -261,14 +252,6 @@ func TestSetServiceAccountRemote(t *testing.T) {
 			groupVersion: appsv1.SchemeGroupVersion,
 			path:         "/namespaces/test/deployments/nginx",
 			args:         []string{"deployment", "nginx", serviceAccount},
-		},
-		{
-			object: &appsv1beta1.StatefulSet{
-				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
-			},
-			groupVersion: appsv1beta1.SchemeGroupVersion,
-			path:         "/namespaces/test/statefulsets/nginx",
-			args:         []string{"statefulset", "nginx", serviceAccount},
 		},
 		{
 			object: &appsv1beta2.StatefulSet{
