@@ -24,7 +24,6 @@ import (
 	v1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	apiserverinternalv1alpha1 "k8s.io/api/apiserverinternal/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
-	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	v1beta2 "k8s.io/api/apps/v1beta2"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	v2 "k8s.io/api/autoscaling/v2"
@@ -72,7 +71,6 @@ import (
 	admissionregistrationv1beta1 "k8s.io/client-go/applyconfigurations/admissionregistration/v1beta1"
 	applyconfigurationsapiserverinternalv1alpha1 "k8s.io/client-go/applyconfigurations/apiserverinternal/v1alpha1"
 	applyconfigurationsappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
-	applyconfigurationsappsv1beta1 "k8s.io/client-go/applyconfigurations/apps/v1beta1"
 	appsv1beta2 "k8s.io/client-go/applyconfigurations/apps/v1beta2"
 	applyconfigurationsautoscalingv1 "k8s.io/client-go/applyconfigurations/autoscaling/v1"
 	autoscalingv2 "k8s.io/client-go/applyconfigurations/autoscaling/v2"
@@ -225,40 +223,6 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationsappsv1.StatefulSetStatusApplyConfiguration{}
 	case appsv1.SchemeGroupVersion.WithKind("StatefulSetUpdateStrategy"):
 		return &applyconfigurationsappsv1.StatefulSetUpdateStrategyApplyConfiguration{}
-
-		// Group=apps, Version=v1beta1
-	case appsv1beta1.SchemeGroupVersion.WithKind("ControllerRevision"):
-		return &applyconfigurationsappsv1beta1.ControllerRevisionApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("Deployment"):
-		return &applyconfigurationsappsv1beta1.DeploymentApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("DeploymentCondition"):
-		return &applyconfigurationsappsv1beta1.DeploymentConditionApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("DeploymentSpec"):
-		return &applyconfigurationsappsv1beta1.DeploymentSpecApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("DeploymentStatus"):
-		return &applyconfigurationsappsv1beta1.DeploymentStatusApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("DeploymentStrategy"):
-		return &applyconfigurationsappsv1beta1.DeploymentStrategyApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("RollbackConfig"):
-		return &applyconfigurationsappsv1beta1.RollbackConfigApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("RollingUpdateDeployment"):
-		return &applyconfigurationsappsv1beta1.RollingUpdateDeploymentApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("RollingUpdateStatefulSetStrategy"):
-		return &applyconfigurationsappsv1beta1.RollingUpdateStatefulSetStrategyApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("StatefulSet"):
-		return &applyconfigurationsappsv1beta1.StatefulSetApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("StatefulSetCondition"):
-		return &applyconfigurationsappsv1beta1.StatefulSetConditionApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("StatefulSetOrdinals"):
-		return &applyconfigurationsappsv1beta1.StatefulSetOrdinalsApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("StatefulSetPersistentVolumeClaimRetentionPolicy"):
-		return &applyconfigurationsappsv1beta1.StatefulSetPersistentVolumeClaimRetentionPolicyApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("StatefulSetSpec"):
-		return &applyconfigurationsappsv1beta1.StatefulSetSpecApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("StatefulSetStatus"):
-		return &applyconfigurationsappsv1beta1.StatefulSetStatusApplyConfiguration{}
-	case appsv1beta1.SchemeGroupVersion.WithKind("StatefulSetUpdateStrategy"):
-		return &applyconfigurationsappsv1beta1.StatefulSetUpdateStrategyApplyConfiguration{}
 
 		// Group=apps, Version=v1beta2
 	case v1beta2.SchemeGroupVersion.WithKind("ControllerRevision"):
