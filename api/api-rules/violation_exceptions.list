@@ -17,9 +17,6 @@ API rule violation: list_type_missing,k8s.io/api/apps/v1,DeploymentStatus,Condit
 API rule violation: list_type_missing,k8s.io/api/apps/v1,ReplicaSetStatus,Conditions
 API rule violation: list_type_missing,k8s.io/api/apps/v1,StatefulSetSpec,VolumeClaimTemplates
 API rule violation: list_type_missing,k8s.io/api/apps/v1,StatefulSetStatus,Conditions
-API rule violation: list_type_missing,k8s.io/api/apps/v1beta1,DeploymentStatus,Conditions
-API rule violation: list_type_missing,k8s.io/api/apps/v1beta1,StatefulSetSpec,VolumeClaimTemplates
-API rule violation: list_type_missing,k8s.io/api/apps/v1beta1,StatefulSetStatus,Conditions
 API rule violation: list_type_missing,k8s.io/api/apps/v1beta2,DaemonSetStatus,Conditions
 API rule violation: list_type_missing,k8s.io/api/apps/v1beta2,DeploymentStatus,Conditions
 API rule violation: list_type_missing,k8s.io/api/apps/v1beta2,ReplicaSetStatus,Conditions
