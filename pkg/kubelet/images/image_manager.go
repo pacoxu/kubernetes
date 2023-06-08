@@ -20,11 +20,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
@@ -79,8 +79,6 @@ type imageManager struct {
 
 	keyring *credentialprovider.DockerKeyring
 
-	lock sync.RWMutex
-
 	state ImageState
 }
 
@@ -98,6 +96,7 @@ func NewImageManager(recorder record.EventRecorder, imageService kubecontainer.I
 	}
 
 	stateImpl, err := NewCheckpointState(stateFileDirectory, secretPulledImageFileName)
+	// TODO (pacoxu) make a Noop state implementation for test
 	if err != nil {
 		klog.ErrorS(err, "Could not initialize checkpoint manager.")
 	}
@@ -155,6 +154,11 @@ func (e *ensuredSecretPulledImageDigest) Clone() *ensuredSecretPulledImageDigest
 	}
 	c.ImageName = e.ImageName
 	return c
+}
+
+func (m *imageManager) StartGC() {
+	klog.InfoS("Starting Kubelet image pull secret ensuring GC manager")
+	go wait.Until(func() { m.state.ClearExpiredState() }, 1*time.Hour, wait.NeverStop)
 }
 
 // records an event using ref, event msg.  log to glog using prefix, msg, logFn
@@ -254,20 +258,20 @@ func (m *imageManager) EnsureImageExists(ctx context.Context, pod *v1.Pod, conta
 		container.Image, imagePullResult.pullDuration.Truncate(time.Millisecond), time.Since(startTime).Truncate(time.Millisecond)), klog.Info)
 	m.backOff.GC()
 
-	m.lock.Lock()
-	if imagePullResult.pullCredentialsHash == "" {
-		// successful pull no auth hash returned, auth was not required so we should reset the hashmap for this
-		// imageref since auth is no longer required for the local image cache, allowing use of the ImageRef
-		// by other pods if it remains cached and pull policy is PullIfNotPresent
-		klog.V(4).InfoS("Delete ensured image", "image", image, "imageRef", imagePullResult.imageRef)
-		m.state.DeleteEnsuredImage(imagePullResult.imageRef)
-	} else {
-		// store/create hashMatch map entry for auth config hash key used to pull the image
-		// for this imageref (digest)
-		klog.V(4).InfoS("Set ensured image", "image", image, "imageRef", imagePullResult.imageRef, "authHash", imagePullResult.pullCredentialsHash)
-		m.state.SetEnsured(imagePullResult.imageRef, image, imagePullResult.pullCredentialsHash, true)
+	if m.state != nil {
+		if imagePullResult.pullCredentialsHash == "" {
+			// successful pull no auth hash returned, auth was not required so we should reset the hashmap for this
+			// imageref since auth is no longer required for the local image cache, allowing use of the ImageRef
+			// by other pods if it remains cached and pull policy is PullIfNotPresent
+			klog.V(4).InfoS("Delete ensured image", "image", image, "imageRef", imagePullResult.imageRef)
+			m.state.DeleteEnsuredImage(imagePullResult.imageRef)
+		} else {
+			// store/create hashMatch map entry for auth config hash key used to pull the image
+			// for this imageref (digest)
+			klog.V(4).InfoS("Set ensured image", "image", image, "imageRef", imagePullResult.imageRef, "authHash", imagePullResult.pullCredentialsHash)
+			m.state.SetEnsured(imagePullResult.imageRef, image, imagePullResult.pullCredentialsHash, true)
+		}
 	}
-	m.lock.Unlock()
 
 	return imagePullResult.imageRef, "", nil
 }
@@ -322,13 +326,17 @@ func applyDefaultImageTag(image string) (string, error) {
 	return image, nil
 }
 
-// isEnsuredBySecret - returns true if the secret for an auth used to pull an
+// isEnsuredBySecret returns two boolean values: pulledBySecret, ensuredBySecret.
+// 1. pulledBySecret return true is it is already in the ensured map, and it will
+// be removed from the ensured map once it is expired.
+// 2. ensuredBySecret returns true if the secret for an auth used to pull an
 // image has already been authenticated through a successful pull request
-// and the same auth exists for this podSandbox/image/
+// and the same auth exists for this podSandbox/image/.
 func (m *imageManager) isEnsuredBySecret(imageRef string, image kubecontainer.ImageSpec, pullSecrets []v1.Secret) (pulledBySecret, ensuredBySecret bool) {
-	m.lock.Lock()
-	defer m.lock.Unlock()
 	if imageRef == "" {
+		return
+	}
+	if m.state == nil {
 		return
 	}
 	pulledBySecret = m.state.GetEnsuredImage(imageRef)

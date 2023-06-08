@@ -106,11 +106,11 @@ func (sc *stateCheckpoint) GetEnsureSecretPulledImageMap() EnsureSecretPulledIma
 	return sc.cache.GetEnsureSecretPulledImageMap()
 }
 
-func (sc *stateCheckpoint) SetEnsureSecretPulledImageMap(ImageMap EnsureSecretPulledImageMap) {
+func (sc *stateCheckpoint) SetEnsureSecretPulledImageMap(imageMap EnsureSecretPulledImageMap) {
 	sc.mux.RLock()
 	defer sc.mux.RUnlock()
 
-	sc.cache.SetEnsureSecretPulledImageMap(ImageMap)
+	sc.cache.SetEnsureSecretPulledImageMap(imageMap)
 }
 
 func (sc *stateCheckpoint) GetEnsuredImage(imageRef string) bool {
@@ -170,7 +170,7 @@ func (sc *stateCheckpoint) ClearExpiredState() {
 	}
 }
 
-// ClearExpiredState clears state and saves it in a checkpoint
+// ClearState clears state and saves it in a checkpoint
 func (sc *stateCheckpoint) ClearState() {
 	sc.mux.Lock()
 	defer sc.mux.Unlock()

@@ -50,5 +50,8 @@ type ImageManager interface {
 	// EnsureImageExists ensures that image specified in `container` exists.
 	EnsureImageExists(ctx context.Context, pod *v1.Pod, container *v1.Container, pullSecrets []v1.Secret, podSandboxConfig *runtimeapi.PodSandboxConfig, podRuntimeHandler string) (string, string, error)
 
+	// StartGC will clean up expired ensured image pull secret map
+	StartGC()
+
 	// TODO(ronl): consolidating image managing and deleting operation in this interface
 }

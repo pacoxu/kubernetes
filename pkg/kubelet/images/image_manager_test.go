@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -34,7 +35,6 @@ import (
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	crierrors "k8s.io/cri-api/pkg/errors"
 	"k8s.io/kubernetes/pkg/features"
-	. "k8s.io/kubernetes/pkg/kubelet/container"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	ctest "k8s.io/kubernetes/pkg/kubelet/container/testing"
 	testingclock "k8s.io/utils/clock/testing"
@@ -228,6 +228,8 @@ func (m *mockPodPullingTimeRecorder) reset() {
 	m.finishedPullingRecorded = false
 }
 
+var tmpStateDir string
+
 func pullerTestEnv(t *testing.T, c pullerTestCase, serialized bool, maxParallelImagePulls *int32) (puller ImageManager, fakeClock *testingclock.FakeClock, fakeRuntime *ctest.FakeRuntime, container *v1.Container, fakePodPullingTimeRecorder *mockPodPullingTimeRecorder) {
 	container = &v1.Container{
 		Name:            "container_name",
@@ -247,11 +249,17 @@ func pullerTestEnv(t *testing.T, c pullerTestCase, serialized bool, maxParallelI
 	fakeRuntime.InspectErr = c.inspectErr
 
 	fakePodPullingTimeRecorder = &mockPodPullingTimeRecorder{}
-	puller = NewImageManager(fakeRecorder, fakeRuntime, backOff, serialized, maxParallelImagePulls, c.qps, c.burst, fakePodPullingTimeRecorder, nil, "/var/lib/kubelet")
+	tmpStateDir, err := os.MkdirTemp("", "image_manager_state")
+	if err != nil {
+		t.Errorf("cannot create state file: %s", err.Error())
+	}
+
+	puller = NewImageManager(fakeRecorder, fakeRuntime, backOff, serialized, maxParallelImagePulls, c.qps, c.burst, fakePodPullingTimeRecorder, nil, tmpStateDir)
 	return
 }
 
 func TestParallelPuller(t *testing.T) {
+	defer os.RemoveAll(tmpStateDir)
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            "test_pod",
@@ -284,6 +292,7 @@ func TestParallelPuller(t *testing.T) {
 }
 
 func TestSerializedPuller(t *testing.T) {
+	defer os.RemoveAll(tmpStateDir)
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            "test_pod",
@@ -339,6 +348,8 @@ func TestApplyDefaultImageTag(t *testing.T) {
 }
 
 func TestPullAndListImageWithPodAnnotations(t *testing.T) {
+	defer os.RemoveAll(tmpStateDir)
+
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            "test_pod",
@@ -365,7 +376,7 @@ func TestPullAndListImageWithPodAnnotations(t *testing.T) {
 		ctx := context.Background()
 		puller, fakeClock, fakeRuntime, container, fakePodPullingTimeRecorder := pullerTestEnv(t, c, useSerializedEnv, nil)
 		fakeRuntime.CalledFunctions = nil
-		fakeRuntime.ImageList = []Image{}
+		fakeRuntime.ImageList = []kubecontainer.Image{}
 		fakeClock.Step(time.Second)
 
 		_, _, err := puller.EnsureImageExists(ctx, pod, container, nil, nil, "")
@@ -451,6 +462,8 @@ func TestPullAndListImageWithRuntimeHandlerInImageCriAPIFeatureGate(t *testing.T
 }
 
 func TestMaxParallelImagePullsLimit(t *testing.T) {
+	defer os.RemoveAll(tmpStateDir)
+
 	ctx := context.Background()
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{

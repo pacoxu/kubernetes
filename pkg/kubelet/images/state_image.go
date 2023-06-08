@@ -71,10 +71,10 @@ func (s *stateImageAuthHash) GetEnsuredImageWithHash(imageRef string, authHash s
 	return false
 }
 
-func (s *stateImageAuthHash) SetEnsureSecretPulledImageMap(ImageMap EnsureSecretPulledImageMap) {
+func (s *stateImageAuthHash) SetEnsureSecretPulledImageMap(imageMap EnsureSecretPulledImageMap) {
 	s.RLock()
 	defer s.RUnlock()
-	s.ImageMap = ImageMap
+	s.ImageMap = imageMap
 }
 
 func (s *stateImageAuthHash) SetEnsured(imageRef, imageName, authHash string, ensured bool) {
@@ -93,11 +93,11 @@ func (s *stateImageAuthHash) SetEnsured(imageRef, imageName, authHash string, en
 	if !ok {
 		digest.HashMatch[authHash] = &EnsuredBySecret{
 			Ensured: ensured,
-			DueDate: time.Now().Add(time.Hour),
+			DueDate: time.Now().Add(ensuredExpirationDuration),
 		}
 	} else {
 		ensuredBySecret.Ensured = ensured
-		ensuredBySecret.DueDate = time.Now().Add(time.Hour)
+		ensuredBySecret.DueDate = time.Now().Add(ensuredExpirationDuration)
 	}
 }
 
@@ -121,8 +121,16 @@ func (s *stateImageAuthHash) DeleteEnsuredImageAuthHash(imageRef string, authHas
 func (s *stateImageAuthHash) ClearExpiredState() {
 	s.Lock()
 	defer s.Unlock()
-	// TODO (pacoxu) clear dueDate after Now.
-	// or do the clean up when storing a new state
+	for ref, digest := range s.ImageMap {
+		for authHash, ensured := range digest.HashMatch {
+			if time.Now().After(ensured.DueDate) {
+				delete(digest.HashMatch, authHash)
+			}
+		}
+		if len(digest.HashMatch) == 0 {
+			delete(s.ImageMap, ref)
+		}
+	}
 	klog.V(4).InfoS("Cleared expired state")
 }
 
