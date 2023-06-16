@@ -151,6 +151,16 @@ func parseModule(s string) module {
 	return module{name: parts[0], version: parts[1]}
 }
 
+// remarshal to make map keys in order
+func JSONRemarshalIndent(bytes []byte, prefix, indent string) ([]byte, error) {
+	var ifce interface{}
+	err := json.Unmarshal(bytes, &ifce)
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(ifce, prefix, indent)
+}
+
 // option1: dependencyverifier dependencies.json
 // it will run `go mod graph` and check it.
 // option2: dependencyverifier dependencies.json mod.graph
@@ -262,10 +272,17 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	actual, err := json.MarshalIndent(config.Status, "", "  ")
 	if err != nil {
 		log.Fatal(err)
 	}
+	// map keys may not be in order
+	actual, err = JSONRemarshalIndent(actual, "", "  ")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	if !bytes.Equal(expected, actual) {
 		log.Printf("Expected status of\n%s", string(expected))
 		log.Printf("Got status of\n%s", string(actual))

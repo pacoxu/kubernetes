@@ -186,8 +186,8 @@
         "sigs.k8s.io/apiserver-network-proxy/konnectivity-client"
       ],
       "golang.org/x/exp": [
-        "github.com/google/cel-go",
-        "github.com/antlr/antlr4/runtime/Go/antlr/v4"
+        "github.com/antlr/antlr4/runtime/Go/antlr/v4",
+        "github.com/google/cel-go"
       ]
     }
   }
