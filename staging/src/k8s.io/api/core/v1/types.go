@@ -2212,6 +2212,12 @@ type ExecAction struct {
 	Command []string `json:"command,omitempty" protobuf:"bytes,1,rep,name=command"`
 }
 
+// SleepAction describes a "sleep" action.
+type SleepAction struct {
+	// Seconds is the number of seconds to sleep.
+	Seconds int64 `json:"seconds" protobuf:"bytes,1,opt,name=seconds"`
+}
+
 // Probe describes a health check to be performed against a container to determine whether it is
 // alive or ready to receive traffic.
 type Probe struct {
@@ -2568,6 +2574,10 @@ type LifecycleHandler struct {
 	// lifecycle hooks will fail in runtime when tcp handler is specified.
 	// +optional
 	TCPSocket *TCPSocketAction `json:"tcpSocket,omitempty" protobuf:"bytes,3,opt,name=tcpSocket"`
+	// Sleep represents the duration in seconds that the container should sleep before being terminated.
+	// If the container terminates before the sleep finishes, this action will be interrupted.
+	// +optional
+	Sleep *SleepAction `json:"sleep,omitempty" protobuf:"bytes,4,opt,name=sleep"`
 }
 
 // Lifecycle describes actions that the management system should take in response to container lifecycle
