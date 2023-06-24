@@ -5179,6 +5179,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: httpGet
       type:
         namedType: io.k8s.api.core.v1.HTTPGetAction
+    - name: sleep
+      type:
+        namedType: io.k8s.api.core.v1.SleepAction
     - name: tcpSocket
       type:
         namedType: io.k8s.api.core.v1.TCPSocketAction
@@ -7214,6 +7217,13 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: clientIP
       type:
         namedType: io.k8s.api.core.v1.ClientIPConfig
+- name: io.k8s.api.core.v1.SleepAction
+  map:
+    fields:
+    - name: seconds
+      type:
+        scalar: numeric
+      default: 0
 - name: io.k8s.api.core.v1.StorageOSPersistentVolumeSource
   map:
     fields:
