@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: EMAIL\n"
-"POT-Creation-Date: 2023-06-27 12:09-0400\n"
+"POT-Creation-Date: 2023-07-06 13:28+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -285,8 +285,8 @@ msgstr ""
 msgid ""
 "\n"
 "\t\t# Create a priority class named high-priority\n"
-"\t\tkubectl create priorityclass high-priority --value=1000 --"
-"description=\"high priority\"\n"
+"\t\tkubectl create priorityclass high-priority --value=1000 --description="
+"\"high priority\"\n"
 "\n"
 "\t\t# Create a priority class named default-priority that is considered as "
 "the global default priority\n"
@@ -295,8 +295,8 @@ msgid ""
 "\n"
 "\t\t# Create a priority class named high-priority that cannot preempt pods "
 "with lower priority\n"
-"\t\tkubectl create priorityclass high-priority --value=1000 --"
-"description=\"high priority\" --preemption-policy=\"Never\""
+"\t\tkubectl create priorityclass high-priority --value=1000 --description="
+"\"high priority\" --preemption-policy=\"Never\""
 msgstr ""
 
 #: staging/src/k8s.io/kubectl/pkg/cmd/create/create_rolebinding.go:43
@@ -316,8 +316,8 @@ msgstr ""
 #: staging/src/k8s.io/kubectl/pkg/cmd/create/create_role.go:46
 msgid ""
 "\n"
-"\t\t# Create a role named \"pod-reader\" that allows user to perform "
-"\"get\", \"watch\" and \"list\" on pods\n"
+"\t\t# Create a role named \"pod-reader\" that allows user to perform \"get"
+"\", \"watch\" and \"list\" on pods\n"
 "\t\tkubectl create role pod-reader --verb=get --verb=list --verb=watch --"
 "resource=pods\n"
 "\n"
@@ -373,8 +373,8 @@ msgid ""
 "\t\t# Create a single ingress called 'simple' that directs requests to foo."
 "com/bar to svc\n"
 "\t\t# svc1:8080 with a TLS secret \"my-cert\"\n"
-"\t\tkubectl create ingress simple --rule=\"foo.com/bar=svc1:8080,tls=my-"
-"cert\"\n"
+"\t\tkubectl create ingress simple --rule=\"foo.com/bar=svc1:8080,tls=my-cert"
+"\"\n"
 "\n"
 "\t\t# Create a catch all ingress of \"/path\" pointing to service svc:port "
 "and Ingress Class as \"otheringress\"\n"
@@ -970,13 +970,13 @@ msgid ""
 "\n"
 "\t\t# Start a hazelcast pod and set environment variables "
 "\"DNS_DOMAIN=cluster\" and \"POD_NAMESPACE=default\" in the container\n"
-"\t\tkubectl run hazelcast --image=hazelcast/hazelcast --"
-"env=\"DNS_DOMAIN=cluster\" --env=\"POD_NAMESPACE=default\"\n"
+"\t\tkubectl run hazelcast --image=hazelcast/hazelcast --env="
+"\"DNS_DOMAIN=cluster\" --env=\"POD_NAMESPACE=default\"\n"
 "\n"
-"\t\t# Start a hazelcast pod and set labels \"app=hazelcast\" and "
-"\"env=prod\" in the container\n"
-"\t\tkubectl run hazelcast --image=hazelcast/hazelcast --"
-"labels=\"app=hazelcast,env=prod\"\n"
+"\t\t# Start a hazelcast pod and set labels \"app=hazelcast\" and \"env=prod"
+"\" in the container\n"
+"\t\tkubectl run hazelcast --image=hazelcast/hazelcast --labels="
+"\"app=hazelcast,env=prod\"\n"
 "\n"
 "\t\t# Dry run; print the corresponding API objects without creating them\n"
 "\t\tkubectl run nginx --image=nginx --dry-run=client\n"
@@ -1099,6 +1099,10 @@ msgid ""
 "\t\t# Wait for the pod \"busybox1\" to contain the status phase to be "
 "\"Running\"\n"
 "\t\tkubectl wait --for=jsonpath='{.status.phase}'=Running pod/busybox1\n"
+"\n"
+"\t\t# Wait for the service \"loadbalancer\" to have ingress.\n"
+"\t\tkubectl wait --for=jsonpath='{.status.loadBalancer.ingress}' service/"
+"loadbalancer\n"
 "\n"
 "\t\t# Wait for the pod \"busybox1\" to be deleted, with a timeout of 60s, "
 "after having issued the \"delete\" command\n"
@@ -2473,14 +2477,14 @@ msgid ""
 "requirements are supported."
 msgstr ""
 
-#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:180
+#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:210
 msgid ""
 "A label selector to use for this service. Only equality-based selector "
 "requirements are supported. If empty (the default) infer the selector from "
 "the replication controller or replica set.)"
 msgstr ""
 
-#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:183
+#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:213
 msgid ""
 "Additional external IP address (not managed by Kubernetes) to accept for the "
 "service. If this IP is routed to a node, the service can be accessed by this "
@@ -2530,7 +2534,7 @@ msgid ""
 "Auto-scale a deployment, replica set, stateful set, or replication controller"
 msgstr ""
 
-#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:186
+#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:216
 msgid ""
 "ClusterIP to be assigned to the service. Leave empty to auto-allocate, or "
 "set to 'None' to create a headless service."
@@ -2724,7 +2728,7 @@ msgstr ""
 msgid "Describe one or many contexts"
 msgstr ""
 
-#: staging/src/k8s.io/kubectl/pkg/cmd/diff/diff.go:136
+#: staging/src/k8s.io/kubectl/pkg/cmd/diff/diff.go:137
 msgid "Diff the live version against a would-be applied version"
 msgstr ""
 
@@ -2808,7 +2812,7 @@ msgstr ""
 msgid "Execute a command in a container."
 msgstr ""
 
-#: staging/src/k8s.io/kubectl/pkg/cmd/wait/wait.go:124
+#: staging/src/k8s.io/kubectl/pkg/cmd/wait/wait.go:127
 msgid "Experimental: Wait for a specific condition on one or many resources"
 msgstr ""
 
@@ -2828,13 +2832,13 @@ msgstr ""
 msgid "Help about any command"
 msgstr ""
 
-#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:179
+#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:209
 msgid ""
 "IP to assign to the LoadBalancer. If empty, an ephemeral IP will be created "
 "and used (cloud-provider specific)."
 msgstr ""
 
-#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:185
+#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:215
 msgid ""
 "If non-empty, set the session affinity for the service to this; legal "
 "values: 'None', 'ClientIP'"
@@ -2916,7 +2920,7 @@ msgstr ""
 msgid "Modify kubeconfig files"
 msgstr ""
 
-#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:182
+#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:212
 msgid ""
 "Name or number for the port on the container that the service should direct "
 "traffic to. Optional."
@@ -3082,7 +3086,7 @@ msgstr ""
 msgid "Show the status of the rollout"
 msgstr ""
 
-#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:163
+#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:186
 msgid ""
 "Take a replication controller, service, deployment or pod and expose it as a "
 "new Kubernetes service"
@@ -3114,7 +3118,7 @@ msgid ""
 "The minimum number or percentage of available pods this budget requires."
 msgstr ""
 
-#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:184
+#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:214
 msgid "The name for the newly created object."
 msgstr ""
 
@@ -3124,11 +3128,11 @@ msgid ""
 "input resource will be used."
 msgstr ""
 
-#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:176
+#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:206
 msgid "The network protocol for the service to be created. Default is 'TCP'."
 msgstr ""
 
-#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:177
+#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:207
 msgid ""
 "The port that the service should serve on. Copied from the resource being "
 "exposed, if unspecified"
@@ -3153,7 +3157,7 @@ msgid ""
 "Kubernetes clusters by default."
 msgstr ""
 
-#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:178
+#: staging/src/k8s.io/kubectl/pkg/cmd/expose/expose.go:208
 msgid ""
 "Type for this service: ClusterIP, NodePort, LoadBalancer, or ExternalName. "
 "Default is 'ClusterIP'."
