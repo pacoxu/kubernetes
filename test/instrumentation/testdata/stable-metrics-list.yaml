@@ -483,12 +483,6 @@
   - 1e+07
   - 1e+08
   - 1e+09
-- name: apiserver_storage_objects
-  help: Number of stored objects at the time of last check split by kind.
-  type: Gauge
-  stabilityLevel: STABLE
-  labels:
-  - resource
 - name: current_executing_requests
   subsystem: flowcontrol
   namespace: apiserver
@@ -571,6 +565,12 @@
   - 10
   - 15
   - 30
+- name: apiserver_storage_objects
+  help: Number of stored objects at the time of last check split by kind.
+  type: Gauge
+  stabilityLevel: STABLE
+  labels:
+  - resource
 - name: disabled_metrics_total
   help: The count of disabled metrics.
   type: Counter
