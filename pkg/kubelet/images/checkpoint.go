@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager"
+	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager/checksum"
 )
 
 var _ checkpointmanager.Checkpoint = &ImageManagerCheckpointV1{}
@@ -28,6 +29,7 @@ var _ checkpointmanager.Checkpoint = &ImageManagerCheckpoint{}
 // ImageManagerCheckpoint struct is used to store mage ensured secret state in a checkpoint in v1 format
 type ImageManagerCheckpoint struct {
 	ImageMap map[string]*ensuredSecretPulledImageDigest `json:"images"`
+	Checksum checksum.Checksum
 }
 
 // ImageManagerCheckpointV1 struct is used to store mage ensured secret state in a checkpoint in v1 format
@@ -46,6 +48,7 @@ func newImageManagerCheckpointV1() *ImageManagerCheckpointV1 {
 
 // MarshalCheckpoint returns marshalled checkpoint in v1 format
 func (cp *ImageManagerCheckpointV1) MarshalCheckpoint() ([]byte, error) {
+	cp.Checksum = checksum.New(cp.ImageMap)
 	return json.Marshal(*cp)
 }
 
@@ -56,5 +59,5 @@ func (cp *ImageManagerCheckpointV1) UnmarshalCheckpoint(blob []byte) error {
 
 // VerifyChecksum is place holder to do verify
 func (cp *ImageManagerCheckpointV1) VerifyChecksum() error {
-	return nil
+	return cp.Checksum.Verify(cp.ImageMap)
 }

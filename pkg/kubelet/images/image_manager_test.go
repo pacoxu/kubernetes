@@ -249,11 +249,7 @@ func pullerTestEnv(t *testing.T, c pullerTestCase, serialized bool, maxParallelI
 	fakeRuntime.InspectErr = c.inspectErr
 
 	fakePodPullingTimeRecorder = &mockPodPullingTimeRecorder{}
-	tmpStateDir, err := os.MkdirTemp("", "image_manager_state")
-	if err != nil {
-		t.Errorf("cannot create state file: %s", err.Error())
-	}
-
+	tmpStateDir := t.TempDir()
 	puller = NewImageManager(fakeRecorder, fakeRuntime, backOff, serialized, maxParallelImagePulls, c.qps, c.burst, fakePodPullingTimeRecorder, nil, tmpStateDir)
 	return
 }
@@ -392,7 +388,7 @@ func TestPullAndListImageWithPodAnnotations(t *testing.T) {
 		assert.Equal(t, "missing_image:latest", image.ID, "Image ID")
 		assert.Equal(t, "", image.Spec.RuntimeHandler, "image.Spec.RuntimeHandler not empty", "ImageID", image.ID)
 
-		expectedAnnotations := []Annotation{
+		expectedAnnotations := []kubecontainer.Annotation{
 			{
 				Name:  "kubernetes.io/runtimehandler",
 				Value: "handler_name",
@@ -433,7 +429,7 @@ func TestPullAndListImageWithRuntimeHandlerInImageCriAPIFeatureGate(t *testing.T
 		ctx := context.Background()
 		puller, fakeClock, fakeRuntime, container, fakePodPullingTimeRecorder := pullerTestEnv(t, c, useSerializedEnv, nil)
 		fakeRuntime.CalledFunctions = nil
-		fakeRuntime.ImageList = []Image{}
+		fakeRuntime.ImageList = []kubecontainer.Image{}
 		fakeClock.Step(time.Second)
 
 		_, _, err := puller.EnsureImageExists(ctx, pod, container, nil, nil, runtimeHandler)
@@ -705,14 +701,14 @@ func TestShouldPullImage(t *testing.T) {
 		},
 	}
 
-	t.Run("disabled_features", func(t *testing.T) {
+	t.Run("disable_ensure_secret_pull_image_features", func(t *testing.T) {
 		defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KubeletEnsureSecretPulledImages, false)()
 		for i, test := range tests {
 			sp := shouldPullImage(test.container, test.imagePresent, test.pulledBySecret, test.ensuredBySecret)
 			assert.Equal(t, test.expectedWithFGOff, sp, "TestCase[%d]: %s ensured image fg disabled", i, test.description)
 		}
 	})
-	t.Run("enabled_features", func(t *testing.T) {
+	t.Run("enable_ensure_secret_pull_image_features", func(t *testing.T) {
 		defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KubeletEnsureSecretPulledImages, true)()
 		for i, test := range tests {
 			sp := shouldPullImage(test.container, test.imagePresent, test.pulledBySecret, test.ensuredBySecret)

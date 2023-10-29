@@ -207,7 +207,7 @@ func (m *imageManager) EnsureImageExists(ctx context.Context, pod *v1.Pod, conta
 	var pulledBySecret, ensuredBySecret bool
 	if present {
 		pulledBySecret, ensuredBySecret = m.isEnsuredBySecret(imageRef, spec, pullSecrets)
-		klog.V(5).InfoS("Get ensured check by securet", "image", image, "imageRef", imageRef, "pulledBySecret", pulledBySecret, "ensuredBySecret", ensuredBySecret)
+		klog.V(5).InfoS("Get ensured check by secret", "image", image, "imageRef", imageRef, "pulledBySecret", pulledBySecret, "ensuredBySecret", ensuredBySecret)
 	}
 
 	if !shouldPullImage(container, present, pulledBySecret, ensuredBySecret) {
@@ -325,7 +325,7 @@ func applyDefaultImageTag(image string) (string, error) {
 // be removed from the ensured map once it is expired.
 // 2. ensuredBySecret returns true if the secret for an auth used to pull an
 // image has already been authenticated through a successful pull request
-// and the same auth exists for this podSandbox/image/.
+// and the same auth exists for this podSandbox/image.
 func (m *imageManager) isEnsuredBySecret(imageRef string, image kubecontainer.ImageSpec, pullSecrets []v1.Secret) (pulledBySecret, ensuredBySecret bool) {
 	if imageRef == "" {
 		return
