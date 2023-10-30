@@ -55,7 +55,7 @@ var NodePrePullImageList = sets.NewString(
 	"gcr.io/cadvisor/cadvisor:v0.47.2",
 	"registry.k8s.io/stress:v1",
 	busyboxImage,
-	"registry.k8s.io/e2e-test-images/busybox@sha256:a9155b13325b2abef48e71de77bb8ac015412a566829f621d06bfae5c699b1b9",
+	"registry.k8s.io/e2e-test-images/busybox@sha256:3e0d9138669908f438c06993e9a6815bbd8c05411b8e9acfc297b3c8b017c28c",
 	imageutils.GetE2EImage(imageutils.Nginx),
 	imageutils.GetE2EImage(imageutils.Perl),
 	imageutils.GetE2EImage(imageutils.Nonewprivs),

@@ -32,7 +32,7 @@ import (
 
 var _ = SIGDescribe("ImageID [NodeFeature: ImageID]", func() {
 
-	busyBoxImage := "registry.k8s.io/e2e-test-images/busybox@sha256:a9155b13325b2abef48e71de77bb8ac015412a566829f621d06bfae5c699b1b9"
+	busyBoxImage := "registry.k8s.io/e2e-test-images/busybox@sha256:3e0d9138669908f438c06993e9a6815bbd8c05411b8e9acfc297b3c8b017c28c"
 
 	f := framework.NewDefaultFramework("image-id-test")
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
