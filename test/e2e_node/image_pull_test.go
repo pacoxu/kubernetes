@@ -1,5 +1,5 @@
 /*
-Copyright 2023 The Kubernetes Authors.
+Copyright 2024 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,113 +36,67 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+// This test needs to run in serial to prevent caching of the images by other tests
+// and to prevent the wait time of image pulls to be increased by other images
 var _ = SIGDescribe("Pull Image", framework.WithSerial(), nodefeature.MaxParallelImagePull, func() {
 
 	f := framework.NewDefaultFramework("parallel-pull-image-test")
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
-
-	httpdImage := imageutils.GetE2EImage(imageutils.Httpd)
-	httpdNewImage := imageutils.GetE2EImage(imageutils.HttpdNew)
-	var testpod, testpod2 *v1.Pod
+	var testpods []*v1.Pod
 
 	ginkgo.Context("parallel image pull with MaxParallelImagePulls=5", func() {
-
 		tempSetCurrentKubeletConfig(f, func(ctx context.Context, initialConfig *kubeletconfig.KubeletConfiguration) {
 			initialConfig.SerializeImagePulls = false
 			initialConfig.MaxParallelImagePulls = ptr.To[int32](5)
 		})
 
 		ginkgo.BeforeEach(func(ctx context.Context) {
-			testpod = &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "httpd",
-					Namespace: f.Namespace.Name,
-				},
-				Spec: v1.PodSpec{
-					Containers: []v1.Container{{
-						Name:            "httpd",
-						Image:           httpdImage,
-						ImagePullPolicy: v1.PullAlways,
-					}},
-					RestartPolicy: v1.RestartPolicyNever,
-				},
-			}
-			testpod2 = &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "httpd2",
-					Namespace: f.Namespace.Name,
-				},
-				Spec: v1.PodSpec{
-					Containers: []v1.Container{{
-						Name:            "httpd-new",
-						Image:           httpdNewImage,
-						ImagePullPolicy: v1.PullAlways,
-					}},
-					RestartPolicy: v1.RestartPolicyNever,
-				},
-			}
-
-			ginkgo.By("cleanup images")
-			_ = RemoveImage(testpod.Spec.Containers[0].Image)
-			_ = RemoveImage(testpod2.Spec.Containers[0].Image)
+			testpods = prepareAndCleanup(ctx, f)
 		})
+
 		ginkgo.AfterEach(func(ctx context.Context) {
 			ginkgo.By("cleanup pods")
-			if testpod != nil {
-				deletePodSyncByName(ctx, f, testpod.Name)
-			}
-			if testpod2 != nil {
-				deletePodSyncByName(ctx, f, testpod2.Name)
+			for _, pod := range testpods {
+				deletePodSyncByName(ctx, f, pod.Name)
 			}
 		})
 
 		ginkgo.It("should pull immediately if no more than 5 pods", func(ctx context.Context) {
-			node := getNodeName(ctx, f)
-			testpod.Spec.NodeName = node
-			testpod2.Spec.NodeName = node
-
-			pod := e2epod.NewPodClient(f).Create(ctx, testpod)
-			pod2 := e2epod.NewPodClient(f).Create(ctx, testpod2)
-			err := e2epod.WaitForPodCondition(ctx, f.ClientSet, f.Namespace.Name, pod.Name, "Failed", 30*time.Second, func(pod *v1.Pod) (bool, error) {
-				if pod.Status.Phase == v1.PodRunning || pod.Status.Phase == v1.PodFailed {
-					return true, nil
-				}
-				return false, nil
-			})
-			framework.ExpectNoError(err)
-			err = e2epod.WaitForPodCondition(ctx, f.ClientSet, f.Namespace.Name, pod2.Name, "Failed", 30*time.Second, func(pod *v1.Pod) (bool, error) {
-				if pod.Status.Phase == v1.PodRunning || pod.Status.Phase == v1.PodFailed {
-					return true, nil
-				}
-				return false, nil
-			})
-			framework.ExpectNoError(err)
+			for _, testpod := range testpods {
+				pod := e2epod.NewPodClient(f).Create(ctx, testpod)
+				err := e2epod.WaitForPodCondition(ctx, f.ClientSet, f.Namespace.Name, pod.Name, "Running", 30*time.Second, func(pod *v1.Pod) (bool, error) {
+					if pod.Status.Phase == v1.PodRunning {
+						return true, nil
+					}
+					return false, nil
+				})
+				framework.ExpectNoError(err)
+			}
 
 			events, err := f.ClientSet.CoreV1().Events(f.Namespace.Name).List(ctx, metav1.ListOptions{})
 			framework.ExpectNoError(err)
-			var httpdPulled, httpdNewPulled pulledStruct
+			var httpdPulled []*pulledStruct
 			for _, event := range events.Items {
-				var err error
 				if event.Reason == kubeletevents.PulledImage {
-					if event.InvolvedObject.Name == testpod.Name {
-						httpdPulled, err = getDurationsFromPulledEventMsg(event.Message)
-						framework.ExpectNoError(err)
-					} else if event.InvolvedObject.Name == testpod2.Name {
-						httpdNewPulled, err = getDurationsFromPulledEventMsg(event.Message)
-						framework.ExpectNoError(err)
+					for _, testpod := range testpods {
+						if event.InvolvedObject.Name == testpod.Name {
+							pulled, err := getDurationsFromPulledEventMsg(event.Message)
+							httpdPulled = append(httpdPulled, pulled)
+							framework.ExpectNoError(err)
+							break
+						}
 					}
 				}
 			}
+			gomega.Expect(len(testpods)).To(gomega.BeComparableTo(len(httpdPulled)))
 
 			// as this is parallel image pulling, the waiting duration should be similar with the pulled duration.
 			// use 1.2 as a common ratio
-			if float32(httpdNewPulled.pulledIncludeWaitingDuration/time.Millisecond)/float32(httpdNewPulled.pulledDuration/time.Millisecond) > 1.2 {
-				framework.Failf("the pull duration including waiting %v should be similar with the pulled duration %v",
-					httpdNewPulled.pulledIncludeWaitingDuration, httpdNewPulled.pulledDuration)
-			}
-			if float32(httpdPulled.pulledIncludeWaitingDuration/time.Millisecond)/float32(httpdPulled.pulledDuration/time.Millisecond) > 1.2 {
-				framework.Failf("the pull duration including waiting %v should be similar with the pulled duration %v",
-					httpdPulled.pulledIncludeWaitingDuration, httpdPulled.pulledDuration)
+			for _, pulled := range httpdPulled {
+				if float32(pulled.pulledIncludeWaitingDuration/time.Millisecond)/float32(pulled.pulledDuration/time.Millisecond) > 1.2 {
+					framework.Failf("the pull duration including waiting %v should be similar with the pulled duration %v",
+						pulled.pulledIncludeWaitingDuration, pulled.pulledDuration)
+				}
 			}
 		})
 
@@ -160,105 +115,103 @@ var _ = SIGDescribe("Pull Image", framework.WithSerial(), nodefeature.MaxParalle
 			initialConfig.MaxParallelImagePulls = ptr.To[int32](1)
 		})
 
-		httpdImage := imageutils.GetE2EImage(imageutils.Httpd)
-		httpdNewImage := imageutils.GetE2EImage(imageutils.HttpdNew)
-		var testpod, testpod2 *v1.Pod
+		var testpods []*v1.Pod
 
 		ginkgo.BeforeEach(func(ctx context.Context) {
-			testpod = &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "httpd",
-					Namespace: f.Namespace.Name,
-				},
-				Spec: v1.PodSpec{
-					Containers: []v1.Container{{
-						Name:            "httpd",
-						Image:           httpdImage,
-						ImagePullPolicy: v1.PullAlways,
-					}},
-					RestartPolicy: v1.RestartPolicyNever,
-				},
-			}
-			testpod2 = &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "httpd2",
-					Namespace: f.Namespace.Name,
-				},
-				Spec: v1.PodSpec{
-					Containers: []v1.Container{{
-						Name:            "httpd-new",
-						Image:           httpdNewImage,
-						ImagePullPolicy: v1.PullAlways,
-					}},
-					RestartPolicy: v1.RestartPolicyNever,
-				},
-			}
-
-			ginkgo.By("cleanup images")
-			_ = RemoveImage(testpod.Spec.Containers[0].Image)
-			_ = RemoveImage(testpod2.Spec.Containers[0].Image)
+			testpods = prepareAndCleanup(ctx, f)
 		})
 
 		ginkgo.AfterEach(func(ctx context.Context) {
 			ginkgo.By("cleanup pods")
-			if testpod != nil {
-				deletePodSyncByName(ctx, f, testpod.Name)
-			}
-			if testpod2 != nil {
-				deletePodSyncByName(ctx, f, testpod2.Name)
+			for _, pod := range testpods {
+				deletePodSyncByName(ctx, f, pod.Name)
 			}
 		})
 
 		ginkgo.It("should be waiting more", func(ctx context.Context) {
-
-			node := getNodeName(ctx, f)
-			testpod.Spec.NodeName = node
-			testpod2.Spec.NodeName = node
-			pod := e2epod.NewPodClient(f).Create(ctx, testpod)
-			pod2 := e2epod.NewPodClient(f).Create(ctx, testpod2)
-			err := e2epod.WaitForPodCondition(ctx, f.ClientSet, f.Namespace.Name, pod.Name, "Failed", 30*time.Second, func(pod *v1.Pod) (bool, error) {
-				if pod.Status.Phase == v1.PodRunning || pod.Status.Phase == v1.PodFailed {
-					return true, nil
-				}
-				return false, nil
-			})
-			framework.ExpectNoError(err)
-			err = e2epod.WaitForPodCondition(ctx, f.ClientSet, f.Namespace.Name, pod2.Name, "Failed", 30*time.Second, func(pod *v1.Pod) (bool, error) {
-				if pod.Status.Phase == v1.PodRunning || pod.Status.Phase == v1.PodFailed {
-					return true, nil
-				}
-				return false, nil
-			})
-			framework.ExpectNoError(err)
+			for _, testpod := range testpods {
+				pod := e2epod.NewPodClient(f).Create(ctx, testpod)
+				err := e2epod.WaitForPodCondition(ctx, f.ClientSet, f.Namespace.Name, pod.Name, "Running", 30*time.Second, func(pod *v1.Pod) (bool, error) {
+					if pod.Status.Phase == v1.PodRunning {
+						return true, nil
+					}
+					return false, nil
+				})
+				framework.ExpectNoError(err)
+			}
 
 			events, err := f.ClientSet.CoreV1().Events(f.Namespace.Name).List(ctx, metav1.ListOptions{})
 			framework.ExpectNoError(err)
-			var httpdPulled, httpdNewPulled pulledStruct
+			var httpdPulled []*pulledStruct
 			for _, event := range events.Items {
-				var err error
 				if event.Reason == kubeletevents.PulledImage {
-					if event.InvolvedObject.Name == testpod.Name {
-						httpdPulled, err = getDurationsFromPulledEventMsg(event.Message)
-						framework.ExpectNoError(err)
-					} else if event.InvolvedObject.Name == testpod2.Name {
-						httpdNewPulled, err = getDurationsFromPulledEventMsg(event.Message)
-						framework.ExpectNoError(err)
+					for _, testpod := range testpods {
+						if event.InvolvedObject.Name == testpod.Name {
+							pulled, err := getDurationsFromPulledEventMsg(event.Message)
+							httpdPulled = append(httpdPulled, pulled)
+							framework.ExpectNoError(err)
+							break
+						}
 					}
 				}
 			}
+			gomega.Expect(len(testpods)).To(gomega.BeComparableTo(len(httpdPulled)))
 
 			// as this is serialize image pulling, the waiting duration should be almost double the duration with the pulled duration.
 			// use 1.5 as a common ratio to avoid some overlap during pod creation
-			if float32(httpdNewPulled.pulledIncludeWaitingDuration/time.Millisecond)/float32(httpdNewPulled.pulledDuration/time.Millisecond) < 1.5 &&
-				float32(httpdPulled.pulledIncludeWaitingDuration/time.Millisecond)/float32(httpdPulled.pulledDuration/time.Millisecond) < 1.5 {
+			if float32(httpdPulled[1].pulledIncludeWaitingDuration/time.Millisecond)/float32(httpdPulled[1].pulledDuration/time.Millisecond) < 1.5 &&
+				float32(httpdPulled[0].pulledIncludeWaitingDuration/time.Millisecond)/float32(httpdPulled[0].pulledDuration/time.Millisecond) < 1.5 {
 				framework.Failf("At least, one of the pull duration including waiting %v/%v should be similar with the pulled duration %v/%v",
-					httpdNewPulled.pulledIncludeWaitingDuration, httpdPulled.pulledIncludeWaitingDuration, httpdNewPulled.pulledDuration, httpdPulled.pulledDuration)
+					httpdPulled[1].pulledIncludeWaitingDuration, httpdPulled[0].pulledIncludeWaitingDuration, httpdPulled[1].pulledDuration, httpdPulled[0].pulledDuration)
 			}
-
 		})
 
 	})
 })
+
+func prepareAndCleanup(ctx context.Context, f *framework.Framework) (testpods []*v1.Pod) {
+	httpdImage := imageutils.GetE2EImage(imageutils.Httpd)
+	httpdNewImage := imageutils.GetE2EImage(imageutils.HttpdNew)
+	node := getNodeName(ctx, f)
+
+	testpod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "httpd",
+			Namespace: f.Namespace.Name,
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{{
+				Name:            "httpd",
+				Image:           httpdImage,
+				ImagePullPolicy: v1.PullAlways,
+			}},
+			NodeName:      node,
+			RestartPolicy: v1.RestartPolicyNever,
+		},
+	}
+	testpod2 := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "httpd2",
+			Namespace: f.Namespace.Name,
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{{
+				Name:            "httpd-new",
+				Image:           httpdNewImage,
+				ImagePullPolicy: v1.PullAlways,
+			}},
+			NodeName:      node,
+			RestartPolicy: v1.RestartPolicyNever,
+		},
+	}
+	testpods = []*v1.Pod{testpod, testpod2}
+
+	ginkgo.By("cleanup images")
+	for _, pod := range testpods {
+		_ = RemoveImage(ctx, pod.Spec.Containers[0].Image)
+	}
+	return testpods
+}
 
 type pulledStruct struct {
 	pulledDuration               time.Duration
@@ -266,21 +219,23 @@ type pulledStruct struct {
 }
 
 // getDurationsFromPulledEventMsg will parse two durations in the pulled message
-// Example msg: `Successfully pulled image \"busybox:1.28\" in 39.356s (49.356s including waiting)`
-func getDurationsFromPulledEventMsg(msg string) (pulled pulledStruct, err error) {
+// Example msg: `Successfully pulled image \"busybox:1.28\" in 39.356s (49.356s including waiting). Image size: 41901587 bytes.`
+func getDurationsFromPulledEventMsg(msg string) (*pulledStruct, error) {
 	splits := strings.Split(msg, " ")
-	if len(splits) == 9 {
-		pulled.pulledDuration, err = time.ParseDuration(splits[5])
-		if err != nil {
-			return
-		}
-		// to skip '('
-		pulled.pulledIncludeWaitingDuration, err = time.ParseDuration(splits[6][1:])
-		if err != nil {
-			return
-		}
-	} else {
-		err = errors.Errorf("pull event message should be spilted to 8: %d", len(splits))
+	if len(splits) != 13 {
+		return nil, errors.Errorf("pull event message should be spilted to 13: %d", len(splits))
 	}
-	return
+	pulledDuration, err := time.ParseDuration(splits[5])
+	if err != nil {
+		return nil, err
+	}
+	// to skip '('
+	pulledIncludeWaitingDuration, err := time.ParseDuration(splits[6][1:])
+	if err != nil {
+		return nil, err
+	}
+	return &pulledStruct{
+		pulledDuration:               pulledDuration,
+		pulledIncludeWaitingDuration: pulledIncludeWaitingDuration,
+	}, nil
 }
