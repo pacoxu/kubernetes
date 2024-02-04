@@ -29,7 +29,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/containerd/cgroups"
+	"github.com/containerd/cgroups/v3"
 	cadvisorv1 "github.com/google/cadvisor/info/v1"
 	libcontainercgroups "github.com/opencontainers/runc/libcontainer/cgroups"
 
