@@ -60,7 +60,7 @@ func TestEtcdOptionsValidate(t *testing.T) {
 				EnableGarbageCollection: true,
 				EnableWatchCache:        true,
 				DefaultWatchCacheSize:   100,
-				EtcdServersOverrides:    []string{"/events#http://127.0.0.1:4002"},
+				EtcdServersOverrides:    []string{"/events#http://127.0.0.1:4002,/events#http://127.0.0.1:4003;http://127.0.0.1:4003"},
 			},
 			expectErr: "--etcd-servers must be specified",
 		},
