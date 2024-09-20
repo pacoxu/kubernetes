@@ -176,13 +176,13 @@ func (r *runtimeServiceProxy) Attach(ctx context.Context, req *runtimeapi.Attach
 	return r.RuntimeService.Attach(ctx, req)
 }
 
-func (r *runtimeServiceProxy) ReopenContainerLog(ctx context.Context, ContainerID string) error {
+func (r *runtimeServiceProxy) ReopenContainerLog(ctx context.Context, containerID string) error {
 	if r.errorInjector != nil {
 		if err := r.errorInjector("ReopenContainerLog"); err != nil {
 			return err
 		}
 	}
-	return r.RuntimeService.ReopenContainerLog(ctx, ContainerID)
+	return r.RuntimeService.ReopenContainerLog(ctx, containerID)
 }
 
 func (r *runtimeServiceProxy) CheckpointContainer(ctx context.Context, options *runtimeapi.CheckpointContainerRequest) error {
