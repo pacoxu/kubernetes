@@ -64,6 +64,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2emetrics "k8s.io/kubernetes/test/e2e/framework/metrics"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
+	"k8s.io/kubernetes/test/e2e_node/criproxy"
 	e2enodekubelet "k8s.io/kubernetes/test/e2e_node/kubeletconfig"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 
@@ -334,6 +335,11 @@ func getCRIClient() (internalapi.RuntimeService, internalapi.ImageManagerService
 	i, err := remote.NewRemoteImageService(imageManagerEndpoint, connectionTimeout, noop.NewTracerProvider(), &logger)
 	if err != nil {
 		return nil, nil, err
+	}
+	if framework.TestContext.CriProxyEnabled {
+		runtimeServiceProxy := criproxy.NewRuntimeServiceProxy(r)
+		imageServiceProxy := criproxy.NewImageServiceProxy(i)
+		return runtimeServiceProxy, imageServiceProxy, nil
 	}
 	return r, i, nil
 }
