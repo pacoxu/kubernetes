@@ -16,6 +16,6 @@ limitations under the License.
 
 package criproxy
 
-type CriProxy interface {
+type CRIProxy interface {
 	SetErrorInjectors(errorInjectors func(string) error)
 }
