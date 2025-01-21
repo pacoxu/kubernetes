@@ -638,6 +638,10 @@
     lockToDefault: false
     preRelease: Deprecated
     version: "1.29"
+  - default: false
+    lockToDefault: true
+    preRelease: Deprecated
+    version: "1.33"
 - name: KubeletCgroupDriverFromCRI
   versionedSpecs:
   - default: false
