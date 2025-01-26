@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -385,36 +386,41 @@ func (s *EtcdOptions) addEtcdHealthEndpoint(c *server.Config) error {
 }
 
 func (s *EtcdOptions) addOverrideEtcdHealthEndpoint(c *server.Config) error {
-	sc := s.StorageConfig
-	serverSet := sets.Set[string]{}
-
+	uniqueServerSets := make(map[string]struct{})
 	for _, override := range s.EtcdServersOverrides {
 		tokens := strings.Split(override, "#")
 		servers := strings.Split(tokens[1], ";")
-		for _, server := range servers {
-			serverSet.Insert(server)
+		// multi overrides may point to the same servers
+		// example: ["apps/deployments#s1.example.com;s2.example.com","apps/replicasets#s1.example.com;s2.example.com"]
+		// multi overrides servers may in different order
+		// example: ["apps/deployments#s2.example.com;s1.example.com","apps/replicasets#s1.example.com;s2.example.com"]
+		sortedServers := make([]string, len(servers))
+		copy(sortedServers, servers)
+		sort.Strings(sortedServers)
+		sortedKey := strings.Join(sortedServers, ";")
+		if _, exists := uniqueServerSets[sortedKey]; !exists {
+			uniqueServerSets[sortedKey] = struct{}{}
+			sc := s.StorageConfig
+			sc.Transport.ServerList = servers
+
+			healthCheck, err := storagefactory.CreateHealthCheck(sc, c.DrainedNotify())
+			if err != nil {
+				return err
+			}
+			currentIndex := len(uniqueServerSets) - 1
+			c.AddHealthChecks(healthz.NamedCheck(fmt.Sprintf("etcd-override-%d", currentIndex), func(r *http.Request) error {
+				return healthCheck()
+			}))
+
+			readyCheck, err := storagefactory.CreateReadyCheck(sc, c.DrainedNotify())
+			if err != nil {
+				return err
+			}
+			c.AddReadyzChecks(healthz.NamedCheck(fmt.Sprintf("etcd-override-readiness-%d", currentIndex), func(r *http.Request) error {
+				return readyCheck()
+			}))
 		}
 	}
-	if serverSet.Len() != 0 {
-		sc.Transport.ServerList = serverSet.UnsortedList()
-	}
-
-	healthCheck, err := storagefactory.CreateHealthCheck(sc, c.DrainedNotify())
-	if err != nil {
-		return err
-	}
-	c.AddHealthChecks(healthz.NamedCheck("etcd-override", func(r *http.Request) error {
-		return healthCheck()
-	}))
-
-	readyCheck, err := storagefactory.CreateReadyCheck(sc, c.DrainedNotify())
-	if err != nil {
-		return err
-	}
-	c.AddReadyzChecks(healthz.NamedCheck("etcd-override-readiness", func(r *http.Request) error {
-		return readyCheck()
-	}))
-
 	return nil
 }
 
