@@ -390,7 +390,6 @@ func (pl *DefaultPreemption) SelectVictimsOnNode(
 		if err := addVictim(v); err != nil {
 			return false, err
 		}
-
 		status := pl.fh.RunFilterPluginsWithNominatedPods(ctx, cycleState, preemptor, nodeInfo)
 		fits := status.IsSuccess()
 		if !fits {

@@ -528,7 +528,16 @@ func TestCallExtenders(t *testing.T) {
 				newFakeExtender().WithSupportsPreemption(true).WithReturnNoVictims(true),
 			},
 			candidates:     makeCandidates(node1Name, victim),
-			wantStatus:     fwk.AsStatus(fmt.Errorf("expected at least one victim pod on node %q", node1Name)),
+			wantStatus:     nil,
+			wantCandidates: []Candidate{},
+		},
+		{
+			name: "empty victim list is dropped after extender passthrough",
+			extenders: []fwk.Extender{
+				newFakeExtender().WithSupportsPreemption(true),
+			},
+			candidates:     makeCandidates(node1Name),
+			wantStatus:     nil,
 			wantCandidates: []Candidate{},
 		},
 		{

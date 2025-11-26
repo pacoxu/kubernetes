@@ -63,6 +63,11 @@ type Extender interface {
 	// The possible changes made by extender may include:
 	//   1. Subset of given candidate nodes after preemption phase of extender.
 	//   2. A different set of victim pod for every given candidate node after preemption phase of extender.
+	//
+	// A candidate may have an empty victim list. That means in-tree filter plugins already
+	// fit without preempting, but the node is still a preemption candidate so this extender
+	// can add victims for resources it manages, or omit the node. Returning a node with an
+	// empty victim list drops that node; it is not treated as an error.
 	ProcessPreemption(
 		pod *v1.Pod,
 		nodeNameToVictims map[string]*extenderv1.Victims,

@@ -226,6 +226,10 @@ func (ev *Evaluator) findCandidates(ctx context.Context, state fwk.CycleState, a
 // We will only check <candidates> with extenders that support preemption.
 // Extenders which do not support preemption may later prevent preemptor from being scheduled on the nominated
 // node. In that case, scheduler will find a different host for the preemptor in subsequent scheduling cycles.
+//
+// Candidates may include nodes with an empty victim list so a preempt-capable extender can
+// add victims. An extender that returns a node with no victims (or leaves an empty list
+// unchanged) drops that node; that is not a scheduler error.
 func (ev *Evaluator) callExtenders(logger klog.Logger, pod *v1.Pod, candidates []Candidate) ([]Candidate, *fwk.Status) {
 	extenders := ev.Handler.Extenders()
 	nodeLister := ev.Handler.MutableSnapshotSharedLister().NodeInfos()
@@ -252,15 +256,10 @@ func (ev *Evaluator) callExtenders(logger klog.Logger, pod *v1.Pod, candidates [
 			}
 			return nil, fwk.AsStatus(err)
 		}
-		// Check if the returned victims are valid.
 		for nodeName, victims := range nodeNameToVictims {
 			if victims == nil || len(victims.Pods) == 0 {
-				if extender.IsIgnorable() {
-					delete(nodeNameToVictims, nodeName)
-					logger.V(2).Info("Ignored node for which the extender didn't report victims", "node", klog.KRef("", nodeName), "extender", extender.Name())
-					continue
-				}
-				return nil, fwk.AsStatus(fmt.Errorf("expected at least one victim pod on node %q", nodeName))
+				delete(nodeNameToVictims, nodeName)
+				logger.V(2).Info("Dropped node for which the extender didn't report victims", "node", klog.KRef("", nodeName), "extender", extender.Name())
 			}
 		}
 		// Replace victimsMap with new result after preemption. So the
@@ -274,13 +273,31 @@ func (ev *Evaluator) callExtenders(logger klog.Logger, pod *v1.Pod, candidates [
 	}
 
 	var newCandidates []Candidate
-	for nodeName := range victimsMap {
+	for nodeName, victims := range victimsMap {
+		if victims == nil || len(victims.Pods) == 0 {
+			// Placeholder candidates (in-tree filters needed no victims) that
+			// extenders did not fill in are not executable preemption.
+			continue
+		}
 		newCandidates = append(newCandidates, &candidate{
-			victims: victimsMap[nodeName],
+			victims: victims,
 			name:    nodeName,
 		})
 	}
 	return newCandidates, nil
+}
+
+// hasInterestedPreemptExtender reports whether any extender both supports
+// preemption and is interested in the pod. Those extenders receive candidates
+// via ProcessPreemption, which is the only HTTP extender API that can observe
+// proposed victims.
+func (ev *Evaluator) hasInterestedPreemptExtender(pod *v1.Pod) bool {
+	for _, extender := range ev.Handler.Extenders() {
+		if extender.SupportsPreemption() && extender.IsInterested(pod) {
+			return true
+		}
+	}
+	return false
 }
 
 // SelectCandidate chooses the best-fit candidate from given <candidates> and return it.
@@ -465,7 +482,12 @@ func (ev *Evaluator) DryRunPreemption(ctx context.Context, state fwk.CycleState,
 		}
 		pods, numPDBViolations, status := ev.SelectVictimsOnNode(ctx, state.Clone(), pod, nodeInfo.Snapshot(), allPossibleVictims, pdbs)
 
-		if status.IsSuccess() && len(pods) != 0 {
+		// In-tree filters may succeed with no victims when only extender-managed
+		// resources are constrained. HTTPExtender.Filter cannot observe simulated
+		// victim removal, so keep the node as a candidate and let ProcessPreemption
+		// add victims. Without a preempt-capable extender, empty victims means
+		// preemption cannot help this node (not an error).
+		if status.IsSuccess() && (len(pods) != 0 || ev.hasInterestedPreemptExtender(pod)) {
 			victims := extenderv1.Victims{
 				Pods:             pods,
 				NumPDBViolations: int64(numPDBViolations),
@@ -486,7 +508,7 @@ func (ev *Evaluator) DryRunPreemption(ctx context.Context, state fwk.CycleState,
 			return
 		}
 		if status.IsSuccess() && len(pods) == 0 {
-			status = fwk.AsStatus(fmt.Errorf("expected at least one victim pod on node %q", nodeInfo.Node().Name))
+			status = fwk.NewStatus(fwk.UnschedulableAndUnresolvable, "No preemption victims found for incoming pod")
 		}
 		mu.Lock()
 		if status.Code() == fwk.Error {
