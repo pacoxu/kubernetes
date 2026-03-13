@@ -107,6 +107,9 @@ network_closure.sh
 # direnv .envrc files
 .envrc
 
+# Local agent override file
+/AGENTS.local.md
+
 # Downloaded kubernetes binary release tar ball
 kubernetes.tar.gz
 
