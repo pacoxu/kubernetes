@@ -2030,6 +2030,25 @@ func waitForUnmount(
 	}
 }
 
+func waitForNoPendingOperation(
+	t *testing.T,
+	oex operationexecutor.OperationExecutor,
+	volumeName v1.UniqueVolumeName,
+	podName types.UniquePodName,
+) {
+	err := retryWithExponentialBackOff(
+		testOperationBackOffDuration,
+		func() (bool, error) {
+			return !oex.IsOperationPending(volumeName, types.UniquePodName(""), k8stypes.NodeName("")) &&
+				!oex.IsOperationPending(volumeName, podName, k8stypes.NodeName("")), nil
+		},
+	)
+
+	if err != nil {
+		t.Fatalf("Timed out waiting for no pending operation on volume %q pod %q.", volumeName, podName)
+	}
+}
+
 func waitForVolumeToExistInASW(t *testing.T, volumeName v1.UniqueVolumeName, asw cache.ActualStateOfWorld) {
 	err := retryWithExponentialBackOff(
 		testOperationBackOffDuration,
@@ -2595,4 +2614,5 @@ func TestReconstructedVolumeShouldUnmountSucceedAfterSetupFailed(t *testing.T) {
 
 	// assert volume unmount succeed
 	waitForUnmount(t, generatedVolumeName, podName, asw)
+	waitForNoPendingOperation(t, oex, generatedVolumeName, podName)
 }
