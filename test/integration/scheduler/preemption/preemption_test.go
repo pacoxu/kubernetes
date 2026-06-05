@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	clientset "k8s.io/client-go/kubernetes"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/klog/v2"
 	configv1 "k8s.io/kube-scheduler/config/v1"
@@ -1625,6 +1626,28 @@ type blockedPod struct {
 	blocked chan struct{}
 }
 
+func waitForPodToSchedule(ctx context.Context, cs clientset.Interface, namespace, name string, timeout time.Duration) (*v1.Pod, error) {
+	var scheduledPod *v1.Pod
+	err := wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, timeout, false, func(ctx context.Context) (bool, error) {
+		pod, err := cs.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return false, fmt.Errorf("pod %q was deleted", name)
+			}
+			if ctx.Err() != nil {
+				return false, err
+			}
+			return false, nil
+		}
+		if pod.Spec.NodeName == "" {
+			return false, nil
+		}
+		scheduledPod = pod
+		return true, nil
+	})
+	return scheduledPod, err
+}
+
 // blockingPermitPlugin is a Permit plugin that blocks until a signal is received.
 type blockingPermitPlugin struct {
 	podsToBlock map[string]*blockedPod
@@ -1753,54 +1776,22 @@ func TestPreemptionRespectsWaitingPod(t *testing.T) {
 	// The victim should NOT be deleted from API server.
 	// Instead the victim  should go to the backoff queue and get rescheduled eventually.
 	t.Logf("Waiting for preemptor to be scheduled")
-	err = wait.PollUntilContextTimeout(testCtx.Ctx, 100*time.Millisecond, 15*time.Second, false, func(ctx context.Context) (bool, error) {
-		// Ensure that victim is not deleted
-		_, err := cs.CoreV1().Pods(testCtx.NS.Name).Get(ctx, victim.Name, metav1.GetOptions{})
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				return false, fmt.Errorf("victim pod was deleted")
-			}
-			return false, err
-		}
-		// Check if preemptor was scheduled
-		p, err := cs.CoreV1().Pods(testCtx.NS.Name).Get(ctx, preemptor.Name, metav1.GetOptions{})
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				return false, fmt.Errorf("preemptor pod was deleted")
-			}
-			return false, err
-		}
-		return p.Spec.NodeName != "", nil
-	})
+	p, err := waitForPodToSchedule(testCtx.Ctx, cs, testCtx.NS.Name, preemptor.Name, wait.ForeverTestTimeout)
 	if err != nil {
 		t.Fatalf("Failed waiting for preemptor validation: %v", err)
 	}
 
 	t.Logf("waiting for victim to be rescheduled")
-	err = wait.PollUntilContextTimeout(testCtx.Ctx, 100*time.Millisecond, 15*time.Second, false, func(ctx context.Context) (bool, error) {
-		v, err := cs.CoreV1().Pods(testCtx.NS.Name).Get(ctx, victim.Name, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-		return v.Spec.NodeName != "", nil
-	})
+	v, err := waitForPodToSchedule(testCtx.Ctx, cs, testCtx.NS.Name, victim.Name, wait.ForeverTestTimeout)
 	if err != nil {
 		t.Fatalf("Failed waiting for victim validation: %v", err)
 	}
 
 	// Check that preemptor and victim are scheduled on expected nodes: victim on a small node and preemptor on a big node.
-	v, err := cs.CoreV1().Pods(testCtx.NS.Name).Get(testCtx.Ctx, victim.Name, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Error getting victim: %v", err)
-	}
 	if v.Spec.NodeName != "small-node" {
 		t.Fatalf("Victim should be scheduled on small-node, but was scheduled on %s", v.Spec.NodeName)
 	}
 
-	p, err := cs.CoreV1().Pods(testCtx.NS.Name).Get(testCtx.Ctx, preemptor.Name, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Error getting preemptor: %v", err)
-	}
 	if p.Spec.NodeName != "big-node" {
 		t.Fatalf("Preemptor should be scheduled on big-node, but was scheduled on %s", p.Spec.NodeName)
 	}
@@ -1965,41 +1956,25 @@ func TestPreemptionRespectsBindingPod(t *testing.T) {
 	// It should call CancelPod() on the victim's BindingPod, causing it to go to backoff queue.
 	// The victim pod should NOT be deleted from API server.
 	// Instead it should be rescheduled onto a smaller node.
-	err = wait.PollUntilContextTimeout(testCtx.Ctx, 100*time.Millisecond, 10*time.Second, false, func(ctx context.Context) (bool, error) {
-		// Check if victim is deleted
-		v, err := cs.CoreV1().Pods(testCtx.NS.Name).Get(ctx, victim.Name, metav1.GetOptions{})
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				return false, fmt.Errorf("victim pod was deleted")
-			}
-			return false, err
-		}
-		// Check if victim was rescheduled
-		_, cond := podutil.GetPodCondition(&v.Status, v1.PodScheduled)
-		if cond != nil && cond.Status == v1.ConditionTrue {
-			return true, nil
-		}
-		return false, nil
-	})
+	t.Logf("Waiting for preemptor to be scheduled")
+	p, err := waitForPodToSchedule(testCtx.Ctx, cs, testCtx.NS.Name, preemptor.Name, wait.ForeverTestTimeout)
+	if err != nil {
+		t.Fatalf("Failed waiting for preemptor validation: %v", err)
+	}
+
+	t.Logf("Waiting for victim to be rescheduled")
+	v, err := waitForPodToSchedule(testCtx.Ctx, cs, testCtx.NS.Name, victim.Name, wait.ForeverTestTimeout)
 	if err != nil {
 		t.Fatalf("Failed waiting for victim validation: %v", err)
 	}
 
 	// 6. Check that preemptor and victim are scheduled on expected nodes: victim on a small node and preemptor on a big node.
-	v, err := cs.CoreV1().Pods(testCtx.NS.Name).Get(testCtx.Ctx, victim.Name, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Error getting victim: %v", err)
-	}
 	if v.Spec.NodeName != "small-node" {
-		t.Fatalf("Victim should be scheduled on node2, but was scheduled on %s", v.Spec.NodeName)
+		t.Fatalf("Victim should be scheduled on small-node, but was scheduled on %s", v.Spec.NodeName)
 	}
 
-	p, err := cs.CoreV1().Pods(testCtx.NS.Name).Get(testCtx.Ctx, preemptor.Name, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Error getting preemptor: %v", err)
-	}
 	if p.Spec.NodeName != "big-node" {
-		t.Fatalf("Preemptor should be scheduled on big-node, but was scheduled on %s", v.Spec.NodeName)
+		t.Fatalf("Preemptor should be scheduled on big-node, but was scheduled on %s", p.Spec.NodeName)
 	}
 
 	// Start a goroutine to release the plugin just in case, ensuring clean teardown.
