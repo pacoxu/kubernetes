@@ -130,7 +130,7 @@ var ExpandedPluginsV1 = &config.Plugins{
 			{Name: names.VolumeBinding, Weight: 1},
 			// Weight is doubled because:
 			// - This is a score coming from user preference.
-			// - It makes its signal comparable to NodeResourcesLeastAllocated.
+			// - It makes its signal comparable to NodeResourcesFit LeastAllocated.
 			{Name: names.PodTopologySpread, Weight: 2},
 			// Weight is doubled because:
 			// - This is a score coming from user preference.
