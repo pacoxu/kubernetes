@@ -194,7 +194,7 @@ func (sched *Scheduler) podGroupCycle(ctx context.Context, schedFwk framework.Fr
 	// Run workload aware preemption if required. If the preemption is successful,
 	// we need to put the pods from pod group back into the scheduling queue.
 	if result.status.Code() == fwk.Unschedulable {
-		pgPostFilterResult, status := sched.runWorkloadAwarePreemption(ctx, schedFwk, podGroupCycleState, podGroupInfo)
+		pgPostFilterResult, status := sched.runWorkloadAwarePreemption(ctx, schedFwk, podGroupCycleState, podGroupInfo, result)
 		if status.IsSuccess() {
 			result.waitingOnPreemption = true
 			for i := range result.podResults {
@@ -219,7 +219,7 @@ func (sched *Scheduler) podGroupCycle(ctx context.Context, schedFwk framework.Fr
 // original state.
 // The function used for evaluating feasibility of pod group scheduling is
 // scheduler.podGroupSchedulingAlgorithm run without any post filters.
-func (sched *Scheduler) runWorkloadAwarePreemption(ctx context.Context, schedFwk framework.Framework, podGroupCycleState *framework.CycleState, podGroupInfo *framework.QueuedPodGroupInfo) (*framework.PodGroupPostFilterResult, *fwk.Status) {
+func (sched *Scheduler) runWorkloadAwarePreemption(ctx context.Context, schedFwk framework.Framework, podGroupCycleState *framework.CycleState, podGroupInfo *framework.QueuedPodGroupInfo, podGroupResult podGroupAlgorithmResult) (*framework.PodGroupPostFilterResult, *fwk.Status) {
 	// Default preemption should be the only pod group post filter registered plugin.
 	plugins := schedFwk.PodGroupPostFilterPlugins()
 	if len(plugins) == 0 {
@@ -247,7 +247,29 @@ func (sched *Scheduler) runWorkloadAwarePreemption(ctx context.Context, schedFwk
 			ProposedAssignments: makeProposedAssignments(&res),
 		}, res.status
 	}
-	return plugins[0].PodGroupPostFilter(ctx, pg, podGroupInfo.UnscheduledPods, pgSchedulingFunc)
+	return plugins[0].PodGroupPostFilter(ctx, pg, makePodGroupPostFilterPods(podGroupResult), pgSchedulingFunc)
+}
+
+func makePodGroupPostFilterPods(podGroupResult podGroupAlgorithmResult) []framework.PodGroupPostFilterPod {
+	pods := make([]framework.PodGroupPostFilterPod, 0, len(podGroupResult.podResults))
+	for _, podResult := range podGroupResult.podResults {
+		pods = append(pods, framework.PodGroupPostFilterPod{
+			Pod:                 podResult.pod,
+			NominatedNodeStatus: nominatedNodeStatus(podResult),
+		})
+	}
+	return pods
+}
+
+func nominatedNodeStatus(podResult algorithmResult) *fwk.Status {
+	if podResult.pod == nil || len(podResult.pod.Status.NominatedNodeName) == 0 || podResult.status == nil {
+		return nil
+	}
+	fitError, ok := podResult.status.AsError().(*framework.FitError)
+	if !ok || fitError.Diagnosis.NodeToStatus == nil {
+		return nil
+	}
+	return fitError.Diagnosis.NodeToStatus.Get(podResult.pod.Status.NominatedNodeName)
 }
 
 // algorithmResult stores the scheduling result and status for a scheduling attempt of a single pod.

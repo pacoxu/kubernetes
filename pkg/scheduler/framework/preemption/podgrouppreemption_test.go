@@ -75,6 +75,7 @@ func TestPodGroupEvaluator_SelectVictimsOnDomain(t *testing.T) {
 		preemptor                *podGroupPreemptor
 		pdbs                     []*policy.PodDisruptionBudget
 		blockingRules            []blockingRule
+		nominatedNodeStatuses    map[string]*fwk.Status
 		customMockSchedulingFunc func(ctx context.Context, domainNodes []fwk.NodeInfo) (*fwk.PodGroupAssignments, *fwk.Status)
 		expectedPods             []string
 		expectedStatus           *fwk.Status
@@ -241,6 +242,47 @@ func TestPodGroupEvaluator_SelectVictimsOnDomain(t *testing.T) {
 				},
 			),
 			blockingRules:  []blockingRule{},
+			expectedPods:   []string{},
+			expectedStatus: fwk.NewStatus(fwk.Unschedulable, "not eligible due to a terminating pod on the nominated node."),
+		},
+		{
+			name:      "Preemptor group is eligible if member nominated node is unresolvable",
+			nodeNames: []string{"node1"},
+			initPods: []*v1.Pod{
+				st.MakePod().Name("victim").UID("v1").Node("node1").Priority(lowPriority).Condition(v1.DisruptionTarget, v1.ConditionTrue, v1.PodReasonPreemptionByScheduler).Terminating().Obj(),
+			},
+			preemptor: newPodGroupPreemptor(
+				st.MakePodGroup().Name("preemptor-pg").Priority(highPriority).Obj(),
+				[]*v1.Pod{
+					st.MakePod().Name("p1").UID("p1").Priority(highPriority).Obj(),
+					st.MakePod().Name("p2").UID("p2").Priority(highPriority).NominatedNodeName("node1").Obj(),
+				},
+			),
+			blockingRules: []blockingRule{
+				{nodeName: "node1", capacity: 2, blockingVictims: sets.New("victim")},
+			},
+			nominatedNodeStatuses: map[string]*fwk.Status{
+				"p2": fwk.NewStatus(fwk.UnschedulableAndUnresolvable, "node is unresolvable"),
+			},
+			expectedPods:   []string{"victim"},
+			expectedStatus: fwk.NewStatus(fwk.Success),
+		},
+		{
+			name:      "Preemptor group is not eligible if member nominated node remains resolvable",
+			nodeNames: []string{"node1"},
+			initPods: []*v1.Pod{
+				st.MakePod().Name("victim").UID("v1").Node("node1").Priority(lowPriority).Condition(v1.DisruptionTarget, v1.ConditionTrue, v1.PodReasonPreemptionByScheduler).Terminating().Obj(),
+			},
+			preemptor: newPodGroupPreemptor(
+				st.MakePodGroup().Name("preemptor-pg").Priority(highPriority).Obj(),
+				[]*v1.Pod{
+					st.MakePod().Name("p1").UID("p1").Priority(highPriority).Obj(),
+					st.MakePod().Name("p2").UID("p2").Priority(highPriority).NominatedNodeName("node1").Obj(),
+				},
+			),
+			nominatedNodeStatuses: map[string]*fwk.Status{
+				"p2": fwk.NewStatus(fwk.Unschedulable, "victims may help"),
+			},
 			expectedPods:   []string{},
 			expectedStatus: fwk.NewStatus(fwk.Unschedulable, "not eligible due to a terminating pod on the nominated node."),
 		},
@@ -1167,6 +1209,14 @@ func TestPodGroupEvaluator_SelectVictimsOnDomain(t *testing.T) {
 
 			pl := &PodGroupEvaluator{
 				podGroupLister: pgLister,
+			}
+			if len(tt.nominatedNodeStatuses) > 0 {
+				tt.preemptor.nominatedNodeStatuses = make(map[*v1.Pod]*fwk.Status, len(tt.nominatedNodeStatuses))
+				for _, pod := range tt.preemptor.Members() {
+					if status, ok := tt.nominatedNodeStatuses[pod.Name]; ok {
+						tt.preemptor.nominatedNodeStatuses[pod] = status
+					}
+				}
 			}
 
 			res, gotStatus := pl.selectVictimsOnDomain(ctx, tt.preemptor, domain, tt.pdbs, mockSchedulingFunc)

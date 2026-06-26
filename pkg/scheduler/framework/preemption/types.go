@@ -34,10 +34,11 @@ import (
 )
 
 type podGroupPreemptor struct {
-	priority         int32
-	pods             []*v1.Pod
-	podGroup         *schedulingapi.PodGroup
-	preemptionPolicy v1.PreemptionPolicy
+	priority              int32
+	pods                  []*v1.Pod
+	podGroup              *schedulingapi.PodGroup
+	preemptionPolicy      v1.PreemptionPolicy
+	nominatedNodeStatuses map[*v1.Pod]*fwk.Status
 }
 
 func newPodGroupPreemptor(pg *schedulingapi.PodGroup, pods []*v1.Pod) *podGroupPreemptor {
@@ -64,6 +65,10 @@ func (p *podGroupPreemptor) Priority() int32 {
 // Members returns the list of Pods that belong to this preemptor.
 func (p *podGroupPreemptor) Members() []*v1.Pod {
 	return p.pods
+}
+
+func (p *podGroupPreemptor) nominatedNodeStatus(pod *v1.Pod) *fwk.Status {
+	return p.nominatedNodeStatuses[pod]
 }
 
 // PodGroup returns a pod group connected with this preemptor.

@@ -68,7 +68,7 @@ func NewPodGroupEvaluator(fh fwk.Handle, executor *Executor) *PodGroupEvaluator 
 // scheduling after modifying the node state.
 // The caller is expected to backup the NodeInfo before calling this function
 // And rollback the state to the backup after function is finished.
-func (ev *PodGroupEvaluator) Preempt(ctx context.Context, pg *schedulingapi.PodGroup, pods []*v1.Pod, podGroupSchedulingFunc framework.PodGroupSchedulingFunc) (*framework.PodGroupPostFilterResult, *fwk.Status) {
+func (ev *PodGroupEvaluator) Preempt(ctx context.Context, pg *schedulingapi.PodGroup, pods []framework.PodGroupPostFilterPod, podGroupSchedulingFunc framework.PodGroupSchedulingFunc) (*framework.PodGroupPostFilterResult, *fwk.Status) {
 	// In case of workload-aware preemption, the domain is whole cluster.
 	// We do not make a snapshot of node info. Those nodes will be shared
 	// with the PodGroup scheduling algorithm passed as podGroupSchedulingFunc.
@@ -77,7 +77,9 @@ func (ev *PodGroupEvaluator) Preempt(ctx context.Context, pg *schedulingapi.PodG
 		return nil, fwk.AsStatus(fmt.Errorf("failed to list node infos: %w", err))
 	}
 	domain := newDomainForWorkloadPreemption(allNodes, ev.podGroupLister, "cluster-domain")
-	preemptor := newPodGroupPreemptor(pg, pods)
+	podList, nominatedNodeStatuses := podGroupPostFilterPods(pods)
+	preemptor := newPodGroupPreemptor(pg, podList)
+	preemptor.nominatedNodeStatuses = nominatedNodeStatuses
 	pdbs, err := getPodDisruptionBudgets(ev.pdbLister)
 	if err != nil {
 		return nil, fwk.AsStatus(fmt.Errorf("failed to get pod disruption budgets: %w", err))
@@ -89,6 +91,18 @@ func (ev *PodGroupEvaluator) Preempt(ctx context.Context, pg *schedulingapi.PodG
 	}
 	status = ev.Executor.actuatePodGroupPreemption(ctx, res.victims, preemptor.pods, preemptor.podGroup, names.DefaultPreemption)
 	return &framework.PodGroupPostFilterResult{NominatedNodeNames: res.nominatedNodeNames}, status
+}
+
+func podGroupPostFilterPods(pods []framework.PodGroupPostFilterPod) ([]*v1.Pod, map[*v1.Pod]*fwk.Status) {
+	podList := make([]*v1.Pod, 0, len(pods))
+	nominatedNodeStatuses := make(map[*v1.Pod]*fwk.Status, len(pods))
+	for _, pod := range pods {
+		podList = append(podList, pod.Pod)
+		if pod.NominatedNodeStatus != nil {
+			nominatedNodeStatuses[pod.Pod] = pod.NominatedNodeStatus
+		}
+	}
+	return podList, nominatedNodeStatuses
 }
 
 type selectVictimsResult struct {
@@ -286,6 +300,9 @@ func (ev *PodGroupEvaluator) preemptorEligibleToPreemptOthers(_ context.Context,
 	nominatedNodes := sets.New[string]()
 	for _, pod := range preemptor.Members() {
 		if len(pod.Status.NominatedNodeName) > 0 {
+			if status := preemptor.nominatedNodeStatus(pod); status != nil && status.Code() == fwk.UnschedulableAndUnresolvable {
+				continue
+			}
 			nominatedNodes.Insert(pod.Status.NominatedNodeName)
 		}
 	}

@@ -68,6 +68,7 @@ type fakePodGroupPlugin struct {
 	podGroupPostFilterStatus *fwk.Status
 	podGroupPostFilterCalled bool
 	podGroupPostFilterResult map[string]*fwk.NominatingInfo
+	podGroupPostFilterPods   []framework.PodGroupPostFilterPod
 }
 
 var _ fwk.FilterPlugin = &fakePodGroupPlugin{}
@@ -95,8 +96,9 @@ func (mp *fakePodGroupPlugin) Permit(ctx context.Context, state fwk.CycleState, 
 	return fwk.NewStatus(fwk.Error, "unexpected call to permit"), 0
 }
 
-func (mp *fakePodGroupPlugin) PodGroupPostFilter(ctx context.Context, pg *schedulingv1alpha3.PodGroup, pods []*v1.Pod, pgSchedulingFunc framework.PodGroupSchedulingFunc) (*framework.PodGroupPostFilterResult, *fwk.Status) {
+func (mp *fakePodGroupPlugin) PodGroupPostFilter(ctx context.Context, pg *schedulingv1alpha3.PodGroup, pods []framework.PodGroupPostFilterPod, pgSchedulingFunc framework.PodGroupSchedulingFunc) (*framework.PodGroupPostFilterResult, *fwk.Status) {
 	mp.podGroupPostFilterCalled = true
+	mp.podGroupPostFilterPods = pods
 	if mp.podGroupPostFilterStatus == nil {
 		return nil, fwk.NewStatus(fwk.Unschedulable, "default fake podgroup postfilter failure")
 	}
@@ -105,7 +107,7 @@ func (mp *fakePodGroupPlugin) PodGroupPostFilter(ctx context.Context, pg *schedu
 	}
 	n := make(map[*v1.Pod]*fwk.NominatingInfo, len(pods))
 	for _, passedPod := range pods {
-		n[passedPod] = mp.podGroupPostFilterResult[passedPod.Name]
+		n[passedPod.Pod] = mp.podGroupPostFilterResult[passedPod.Pod.Name]
 	}
 	return &framework.PodGroupPostFilterResult{NominatedNodeNames: n}, mp.podGroupPostFilterStatus
 }
@@ -2952,7 +2954,11 @@ func TestRunWorkloadAwarePreemption(t *testing.T) {
 			// Just inject logger explicitly in context to avoid panic
 			ctx = klog.NewContext(ctx, logger)
 
-			res, status := sched.runWorkloadAwarePreemption(ctx, schedFwk, framework.NewCycleState(), tt.podGroupInfo)
+			podGroupResult := podGroupAlgorithmResult{}
+			for _, pInfo := range tt.podGroupInfo.QueuedPodInfos {
+				podGroupResult.podResults = append(podGroupResult.podResults, algorithmResult{pod: pInfo.Pod})
+			}
+			res, status := sched.runWorkloadAwarePreemption(ctx, schedFwk, framework.NewCycleState(), tt.podGroupInfo, podGroupResult)
 
 			if tt.expectedStatus.Code() != status.Code() || tt.expectedStatus.Message() != status.Message() {
 				t.Errorf("Unexpected status, want code %v message %q, got code %v message %q",
@@ -2968,6 +2974,38 @@ func TestRunWorkloadAwarePreemption(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestMakePodGroupPostFilterPods_NominatedNodeStatus(t *testing.T) {
+	pod := st.MakePod().Name("p1").NominatedNodeName("node1").Obj()
+	nominatedNodeStatus := fwk.NewStatus(fwk.UnschedulableAndUnresolvable, "node is unresolvable")
+	result := podGroupAlgorithmResult{
+		podResults: []algorithmResult{
+			{
+				pod: pod,
+				status: fwk.NewStatus(fwk.Unschedulable).WithError(&framework.FitError{
+					Pod:         pod,
+					NumAllNodes: 1,
+					Diagnosis: framework.Diagnosis{
+						NodeToStatus: framework.NewNodeToStatus(map[string]*fwk.Status{
+							"node1": nominatedNodeStatus,
+						}, fwk.NewStatus(fwk.UnschedulableAndUnresolvable)),
+					},
+				}),
+			},
+		},
+	}
+
+	pods := makePodGroupPostFilterPods(result)
+	if len(pods) != 1 {
+		t.Fatalf("Expected one post filter pod, got %d", len(pods))
+	}
+	if pods[0].Pod != pod {
+		t.Fatalf("Expected wrapper to contain pod %q, got %v", pod.Name, pods[0].Pod)
+	}
+	if pods[0].NominatedNodeStatus.Code() != fwk.UnschedulableAndUnresolvable {
+		t.Fatalf("Expected nominated node status %v, got %v", fwk.UnschedulableAndUnresolvable, pods[0].NominatedNodeStatus)
 	}
 }
 

@@ -2598,7 +2598,7 @@ func TestPreEnqueue(t *testing.T) {
 				if err != nil {
 					t.Fatalf("could not find pg: %v", err)
 				}
-				podsToPreempt := []*v1.Pod{tt.podToTriggerPreemption}
+				podsToPreempt := []framework.PodGroupPostFilterPod{{Pod: tt.podToTriggerPreemption}}
 				var pgSchedulingFunc framework.PodGroupSchedulingFunc = func(_ context.Context) (*fwk.PodGroupAssignments, *fwk.Status) {
 					nodeInfo, _ := f.SnapshotSharedLister().NodeInfos().Get("node1")
 					if len(nodeInfo.GetPods()) == 0 {
@@ -2669,7 +2669,7 @@ func TestDefaultPreemption_PodGroupPostFilter_ErrorWrapping(t *testing.T) {
 	}
 
 	preemptorPG := st.MakePodGroup().Name("preemptor-pg").Priority(highPriority).Obj()
-	preemptorPods := []*v1.Pod{st.MakePod().Name("p").UID("p").Priority(highPriority).Obj()}
+	preemptorPods := []framework.PodGroupPostFilterPod{{Pod: st.MakePod().Name("p").UID("p").Priority(highPriority).Obj()}}
 	mockSchedulingFunc := func(ctx context.Context) (*fwk.PodGroupAssignments, *fwk.Status) {
 		return nil, fwk.NewStatus(fwk.Unschedulable)
 	}

@@ -170,6 +170,14 @@ type PodGroupPostFilterResult struct {
 	NominatedNodeNames map[*v1.Pod]*fwk.NominatingInfo
 }
 
+// PodGroupPostFilterPod carries a pod and per-pod scheduling details needed by PodGroupPostFilter plugins.
+type PodGroupPostFilterPod struct {
+	Pod *v1.Pod
+	// NominatedNodeStatus is the current-cycle Filter status for the pod's nominated node.
+	// It is nil when the pod has no nominated node or no Filter diagnosis is available.
+	NominatedNodeStatus *fwk.Status
+}
+
 // PodGroupPostFilterPlugin is an interface for plugins that are called
 // after a PodGroup cannot be scheduled.
 // It should not be used by any other plugin but DefaultPreemption.
@@ -177,7 +185,7 @@ type PodGroupPostFilterPlugin interface {
 	fwk.Plugin
 
 	// PodGroupPostFilter is called after a PodGroup cannot be scheduled.
-	PodGroupPostFilter(ctx context.Context, pg *v1alpha3.PodGroup, pods []*v1.Pod, pgSchedulingFunc PodGroupSchedulingFunc) (*PodGroupPostFilterResult, *fwk.Status)
+	PodGroupPostFilter(ctx context.Context, pg *v1alpha3.PodGroup, pods []PodGroupPostFilterPod, pgSchedulingFunc PodGroupSchedulingFunc) (*PodGroupPostFilterResult, *fwk.Status)
 }
 
 // PlacementFeasiblePlugin is an interface for plugins that are called after each pod in a pod group is evaluated.
