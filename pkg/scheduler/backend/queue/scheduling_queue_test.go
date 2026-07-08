@@ -7871,3 +7871,31 @@ func TestDeletePodGroup(t *testing.T) {
 		})
 	}
 }
+
+func TestDeletePodGroupIgnoresStaleDelete(t *testing.T) {
+	featuregatetesting.SetFeatureGatesDuringTest(t, utilfeature.DefaultFeatureGate, featuregatetesting.FeatureOverrides{
+		features.GenericWorkload: true,
+	})
+
+	logger, ctx := ktesting.NewTestContext(t)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	pgName := "pg-test"
+	oldPodGroup := st.MakePodGroup().Name(pgName).Namespace("ns1").UID("old-pg").MinCount(1).Obj()
+	newPodGroup := st.MakePodGroup().Name(pgName).Namespace("ns1").UID("new-pg").MinCount(2).Obj()
+
+	q := NewTestQueue(ctx, newDefaultQueueSort())
+	q.AddPodGroup(logger, oldPodGroup)
+	q.AddPodGroup(logger, newPodGroup)
+
+	q.DeletePodGroup(logger, oldPodGroup)
+
+	gotPodGroup, ok := q.workloadForest.getPodGroup(newPodGroup)
+	if !ok {
+		t.Fatalf("Expected recreated pod group to remain in workloadForest after stale delete")
+	}
+	if diff := cmp.Diff(newPodGroup, gotPodGroup); diff != "" {
+		t.Fatalf("Unexpected pod group after stale delete (-want, +got):\n%s", diff)
+	}
+}

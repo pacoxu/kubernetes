@@ -499,8 +499,12 @@ func (sched *Scheduler) deletePodGroup(obj any) {
 	}
 
 	logger.V(3).Info("Delete event for pod group", "podGroup", klog.KObj(pg))
-	sched.Cache.RemovePodGroup(pg)
-	sched.SchedulingQueue.DeletePodGroup(logger, pg)
+	if deleted := sched.Cache.RemovePodGroup(pg); !deleted {
+		return
+	}
+	if deleted := sched.SchedulingQueue.DeletePodGroup(logger, pg); !deleted {
+		return
+	}
 	sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(logger, evt, pg, nil, nil)
 }
 

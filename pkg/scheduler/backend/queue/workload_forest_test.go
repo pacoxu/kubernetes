@@ -113,6 +113,7 @@ func TestWorkloadForest_UpdatePodGroup(t *testing.T) {
 
 func TestWorkloadForest_DeletePodGroup(t *testing.T) {
 	pg1 := st.MakePodGroup().Name("pg1").Namespace("ns1").UID("uid1").Obj()
+	recreatedPG1 := st.MakePodGroup().Name("pg1").Namespace("ns1").UID("uid3").MinCount(2).Obj()
 	pg2 := st.MakePodGroup().Name("pg2").Namespace("ns1").UID("uid2").Obj()
 
 	tests := []struct {
@@ -135,6 +136,14 @@ func TestWorkloadForest_DeletePodGroup(t *testing.T) {
 			podGroupToDelete: pg2,
 			want: map[string]*schedulingv1alpha3.PodGroup{
 				"pg/ns1/pg1": pg1,
+			},
+		},
+		{
+			name:             "delete stale pod group with reused name is no-op",
+			initialPodGroups: []*schedulingv1alpha3.PodGroup{pg1, recreatedPG1},
+			podGroupToDelete: pg1,
+			want: map[string]*schedulingv1alpha3.PodGroup{
+				"pg/ns1/pg1": recreatedPG1,
 			},
 		},
 	}

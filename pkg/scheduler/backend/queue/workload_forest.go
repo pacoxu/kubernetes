@@ -47,8 +47,17 @@ func (wf *workloadForest) updatePodGroup(podGroup *schedulingv1alpha3.PodGroup) 
 }
 
 // deletePodGroup removes a PodGroup from the forest.
-func (wf *workloadForest) deletePodGroup(podGroup *schedulingv1alpha3.PodGroup) {
-	delete(wf.podGroups, podGroupKey(podGroup))
+// It returns false when the delete event is for an older PodGroup instance
+// than the one currently stored under the same namespace/name.
+func (wf *workloadForest) deletePodGroup(podGroup *schedulingv1alpha3.PodGroup) bool {
+	key := podGroupKey(podGroup)
+	cachedPodGroup, exists := wf.podGroups[key]
+	// Recreated PodGroups can share namespace/name; UID is the only signal that this delete is stale.
+	if exists && cachedPodGroup.UID != "" && podGroup.UID != "" && cachedPodGroup.UID != podGroup.UID {
+		return false
+	}
+	delete(wf.podGroups, key)
+	return true
 }
 
 // getRootForPod returns the current root PodGroup object for a given pod.

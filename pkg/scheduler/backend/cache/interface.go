@@ -139,7 +139,9 @@ type Cache interface {
 	UpdatePodGroup(logger klog.Logger, oldPodGroup, newPodGroup *schedulingv1alpha3.PodGroup)
 
 	// RemovePodGroup removes a pod group object from the cache.
-	RemovePodGroup(podGroup *schedulingv1alpha3.PodGroup)
+	// It returns false when the delete event is for an older PodGroup instance
+	// than the one currently stored under the same namespace/name.
+	RemovePodGroup(podGroup *schedulingv1alpha3.PodGroup) bool
 }
 
 // Dump is a dump of the cache state.

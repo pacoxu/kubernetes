@@ -131,7 +131,9 @@ type SchedulingQueue interface {
 	UpdatePodGroup(logger klog.Logger, podGroup *schedulingv1alpha3.PodGroup)
 	// DeletePodGroup removes a PodGroup object from the queue,
 	// moving all pods associated with the pod group to the incompletePodGroupPods.
-	DeletePodGroup(logger klog.Logger, podGroup *schedulingv1alpha3.PodGroup)
+	// It returns false when the delete event is for an older PodGroup instance
+	// than the one currently stored under the same namespace/name.
+	DeletePodGroup(logger klog.Logger, podGroup *schedulingv1alpha3.PodGroup) bool
 
 	// Close closes the SchedulingQueue so that the goroutine which is
 	// waiting to pop items can exit gracefully.
@@ -1488,11 +1490,13 @@ func (p *PriorityQueue) UpdatePodGroup(logger klog.Logger, podGroup *schedulingv
 
 // DeletePodGroup removes a PodGroup object from the queue,
 // moving all pods associated with the pod group to the incompletePodGroupPods.
-func (p *PriorityQueue) DeletePodGroup(logger klog.Logger, podGroup *schedulingv1alpha3.PodGroup) {
+func (p *PriorityQueue) DeletePodGroup(logger klog.Logger, podGroup *schedulingv1alpha3.PodGroup) bool {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	p.workloadForest.deletePodGroup(podGroup)
+	if deleted := p.workloadForest.deletePodGroup(podGroup); !deleted {
+		return false
+	}
 
 	pgInfoLookup := &framework.QueuedPodGroupInfo{
 		PodGroupInfo: &framework.PodGroupInfo{
@@ -1507,24 +1511,25 @@ func (p *PriorityQueue) DeletePodGroup(logger klog.Logger, podGroup *schedulingv
 			p.incompletePodGroupPods.add(pInfo)
 		}
 		logger.V(5).Info("Pod group deleted, decomposed and enqueued pods to incompletePodGroupPods", "podGroup", klog.KObj(pgInfoLookup), "pods", len(pgInfo.QueuedPodInfos))
-		return
+		return true
 	}
 	if !p.activeQ.isLastPoppedEntity(pgInfoLookup) {
 		// PodGroup isn't pending or enqueued.
 		// No pods are tracked for that PodGroup in the queue,
 		// because in such case they are either scheduled or the PodGroup has no pods left.
-		return
+		return true
 	}
 	// Get the pending pods and move them to incompletePodGroupPods.
 	pendingPods := p.pendingPodGroupPods.clear()
 	if len(pendingPods) == 0 {
 		// No pending pods, nothing to move.
-		return
+		return true
 	}
 	for _, pInfo := range pendingPods {
 		p.incompletePodGroupPods.add(pInfo)
 	}
 	logger.V(5).Info("Pod group deleted, decomposed and enqueued pending pods to incompletePodGroupPods", "podGroup", klog.KObj(pgInfoLookup), "pods", len(pendingPods))
+	return true
 }
 
 // NOTE: this function assumes a lock has been acquired in the caller.

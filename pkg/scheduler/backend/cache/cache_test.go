@@ -1134,6 +1134,27 @@ func Test_RemovePodGroup(t *testing.T) {
 	}
 }
 
+func Test_RemovePodGroupIgnoresStaleDelete(t *testing.T) {
+	_, ctx := ktesting.NewTestContext(t)
+	cache := newCache(ctx, time.Second, nil, true)
+
+	oldPodGroup := st.MakePodGroup().Namespace("ns").Name("pg").UID("old-pg").MinCount(1).Obj()
+	newPodGroup := st.MakePodGroup().Namespace("ns").Name("pg").UID("new-pg").MinCount(2).Obj()
+
+	cache.AddPodGroup(oldPodGroup)
+	cache.AddPodGroup(newPodGroup)
+
+	cache.RemovePodGroup(oldPodGroup)
+
+	gotPodGroup, err := cache.PodGroups().Get(newPodGroup.Namespace, newPodGroup.Name)
+	if err != nil {
+		t.Fatalf("Expected recreated pod group to remain after stale delete, got error: %v", err)
+	}
+	if diff := cmp.Diff(newPodGroup, gotPodGroup); diff != "" {
+		t.Fatalf("Unexpected pod group after stale delete (-want, +got):\n%s", diff)
+	}
+}
+
 // TestUpdatePodGroupStateSnapshot tests that pod group states of the snapshot have
 // their data and generations updated properly.
 func TestUpdatePodGroupStateSnapshot(t *testing.T) {

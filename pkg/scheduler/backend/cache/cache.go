@@ -1056,9 +1056,9 @@ func (cache *cacheImpl) UpdatePodGroup(logger klog.Logger, oldPodGroup, newPodGr
 }
 
 // RemovePodGroup removes a pod group object from the cache.
-func (cache *cacheImpl) RemovePodGroup(podGroup *schedulingv1alpha3.PodGroup) {
+func (cache *cacheImpl) RemovePodGroup(podGroup *schedulingv1alpha3.PodGroup) bool {
 	if !cache.genericWorkloadEnabled {
-		return
+		return true
 	}
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
@@ -1066,7 +1066,12 @@ func (cache *cacheImpl) RemovePodGroup(podGroup *schedulingv1alpha3.PodGroup) {
 	key := newPodGroupKey(podGroup.Namespace, podGroup.Name)
 	pgs, exists := cache.podGroupStates[key]
 	if !exists {
-		return
+		return true
+	}
+	cachedPodGroup := pgs.PodGroup()
+	// Recreated PodGroups can share namespace/name; UID is the only signal that this delete is stale.
+	if cachedPodGroup != nil && cachedPodGroup.UID != "" && podGroup.UID != "" && cachedPodGroup.UID != podGroup.UID {
+		return false
 	}
 	pgs.removePodGroup()
 	if pgs.empty() {
@@ -1074,4 +1079,5 @@ func (cache *cacheImpl) RemovePodGroup(podGroup *schedulingv1alpha3.PodGroup) {
 		// Only when there are no member pods and the PodGroup object is removed, the podGroupState can be removed.
 		delete(cache.podGroupStates, key)
 	}
+	return true
 }
