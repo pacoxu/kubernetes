@@ -1490,9 +1490,10 @@ func TestRecreatedPodGroupSameNameStaleDelete(t *testing.T) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	schedQueue := internalqueue.NewTestQueue(ctx, nil)
 	sched := &Scheduler{
 		Cache:           internalcache.New(ctx, nil, true),
-		SchedulingQueue: internalqueue.NewTestQueue(ctx, nil),
+		SchedulingQueue: schedQueue,
 		logger:          logger,
 	}
 
@@ -1501,6 +1502,14 @@ func TestRecreatedPodGroupSameNameStaleDelete(t *testing.T) {
 
 	sched.addPodGroup(oldPodGroup)
 	sched.addPodGroup(newPodGroup)
+
+	gotQueuePodGroup, ok := internalqueue.GetPodGroup(schedQueue, newPodGroup.Namespace, newPodGroup.Name)
+	if !ok {
+		t.Fatalf("Expected recreated pod group to exist in queue before stale delete")
+	}
+	if diff := cmp.Diff(newPodGroup, gotQueuePodGroup); diff != "" {
+		t.Fatalf("Unexpected pod group in queue before stale delete (-want, +got):\n%s", diff)
+	}
 
 	gotPodGroup, err := sched.Cache.PodGroups().Get(newPodGroup.Namespace, newPodGroup.Name)
 	if err != nil {
@@ -1521,5 +1530,13 @@ func TestRecreatedPodGroupSameNameStaleDelete(t *testing.T) {
 	}
 	if diff := cmp.Diff(newPodGroup, gotPodGroup); diff != "" {
 		t.Fatalf("Unexpected pod group after stale delete (-want, +got):\n%s", diff)
+	}
+
+	gotQueuePodGroup, ok = internalqueue.GetPodGroup(schedQueue, newPodGroup.Namespace, newPodGroup.Name)
+	if !ok {
+		t.Fatalf("Expected recreated pod group to remain in queue after stale delete")
+	}
+	if diff := cmp.Diff(newPodGroup, gotQueuePodGroup); diff != "" {
+		t.Fatalf("Unexpected pod group in queue after stale delete (-want, +got):\n%s", diff)
 	}
 }

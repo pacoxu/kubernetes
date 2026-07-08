@@ -20,12 +20,28 @@ import (
 	"context"
 	"time"
 
+	schedulingv1alpha3 "k8s.io/api/scheduling/v1alpha3"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/metrics"
 )
+
+// GetPodGroup returns the PodGroup stored in the queue's workload forest.
+// It is intended to be used from tests only.
+func GetPodGroup(pq *PriorityQueue, namespace, name string) (*schedulingv1alpha3.PodGroup, bool) {
+	pq.lock.RLock()
+	defer pq.lock.RUnlock()
+
+	return pq.workloadForest.getPodGroup(&schedulingv1alpha3.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
+		},
+	})
+}
 
 // NewTestQueue creates a priority queue with an empty informer factory.
 func NewTestQueue(ctx context.Context, lessFn fwk.LessFunc, opts ...Option) *PriorityQueue {

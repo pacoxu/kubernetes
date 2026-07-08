@@ -7899,3 +7899,53 @@ func TestDeletePodGroupIgnoresStaleDelete(t *testing.T) {
 		t.Fatalf("Unexpected pod group after stale delete (-want, +got):\n%s", diff)
 	}
 }
+
+func TestDeletePodGroupIgnoresStaleDeleteKeepsQueuedPods(t *testing.T) {
+	featuregatetesting.SetFeatureGatesDuringTest(t, utilfeature.DefaultFeatureGate, featuregatetesting.FeatureOverrides{
+		features.GenericWorkload: true,
+	})
+
+	logger, ctx := ktesting.NewTestContext(t)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	pgName := "pg-test"
+	p1 := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").Label("allow", "").PodGroupName(pgName).Obj()
+	p2 := st.MakePod().Name("pod2").Namespace("ns1").UID("pod2").Label("allow", "").PodGroupName(pgName).Obj()
+	oldPodGroup := st.MakePodGroup().Name(pgName).Namespace("ns1").UID("old-pg").MinCount(1).Obj()
+	newPodGroup := st.MakePodGroup().Name(pgName).Namespace("ns1").UID("new-pg").MinCount(2).Obj()
+
+	preEnqueueMap := map[string]map[string]fwk.PreEnqueuePlugin{
+		"": {
+			"preEnqueuePlugin": &preEnqueuePlugin{allowlists: []string{"allow"}},
+		},
+	}
+	q := NewTestQueue(ctx, newDefaultQueueSort(), WithPreEnqueuePluginMap(preEnqueueMap))
+
+	q.AddPodGroup(logger, oldPodGroup)
+	q.AddPodGroup(logger, newPodGroup)
+	setupInitialPodGroupState(t, ctx, q, []*v1.Pod{p1, p2}, stateActive, newPodGroup)
+
+	q.DeletePodGroup(logger, oldPodGroup)
+
+	gotPodGroup, ok := q.workloadForest.getPodGroup(newPodGroup)
+	if !ok {
+		t.Fatalf("Expected recreated pod group to remain in workloadForest after stale delete")
+	}
+	if diff := cmp.Diff(newPodGroup, gotPodGroup); diff != "" {
+		t.Fatalf("Unexpected pod group after stale delete (-want, +got):\n%s", diff)
+	}
+
+	pgLookup := newQueuedPodGroupInfoForLookup(p1)
+	if !q.activeQ.has(pgLookup) {
+		t.Errorf("Expected pod group to remain in activeQ after stale delete")
+	}
+	for _, pod := range []*v1.Pod{p1, p2} {
+		if q.incompletePodGroupPods.has(pod) {
+			t.Errorf("Expected pod %s not to be moved to incompletePodGroupPods after stale delete", pod.Name)
+		}
+	}
+	if q.incompletePodGroupPods.len() != 0 {
+		t.Errorf("Expected incompletePodGroupPods to be empty after stale delete, got %d", q.incompletePodGroupPods.len())
+	}
+}

@@ -500,9 +500,11 @@ func (sched *Scheduler) deletePodGroup(obj any) {
 
 	logger.V(3).Info("Delete event for pod group", "podGroup", klog.KObj(pg))
 	if deleted := sched.Cache.RemovePodGroup(pg); !deleted {
+		logger.V(4).Info("Ignoring stale pod group delete", "podGroup", klog.KObj(pg), "deletedUID", pg.UID)
 		return
 	}
 	if deleted := sched.SchedulingQueue.DeletePodGroup(logger, pg); !deleted {
+		logger.V(4).Info("Ignoring stale pod group delete", "podGroup", klog.KObj(pg), "deletedUID", pg.UID)
 		return
 	}
 	sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(logger, evt, pg, nil, nil)
