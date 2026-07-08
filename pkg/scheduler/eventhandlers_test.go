@@ -1484,3 +1484,38 @@ func TestDeletePodGroup(t *testing.T) {
 		})
 	}
 }
+
+func TestRecreatedPodGroupSameNameStaleDelete(t *testing.T) {
+	logger, ctx := ktesting.NewTestContext(t)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	sched := &Scheduler{
+		Cache:           internalcache.New(ctx, nil, true),
+		SchedulingQueue: internalqueue.NewTestQueue(ctx, nil),
+		logger:          logger,
+	}
+
+	oldPodGroup := st.MakePodGroup().Namespace("ns1").Name("pg1").UID("old-pg").MinCount(1).Obj()
+	newPodGroup := st.MakePodGroup().Namespace("ns1").Name("pg1").UID("new-pg").MinCount(2).Obj()
+
+	sched.addPodGroup(oldPodGroup)
+	sched.addPodGroup(newPodGroup)
+
+	gotPodGroup, err := sched.Cache.PodGroups().Get(newPodGroup.Namespace, newPodGroup.Name)
+	if err != nil {
+		t.Fatalf("Expected recreated pod group to exist before stale delete, got error: %v", err)
+	}
+	if diff := cmp.Diff(newPodGroup, gotPodGroup); diff != "" {
+		t.Fatalf("Unexpected pod group before stale delete (-want, +got):\n%s", diff)
+	}
+
+	// This reproduces the caveat from kubernetes/kubernetes#139914: PodGroup
+	// membership is keyed by namespace/name, so an old object's delete event
+	// cannot be distinguished from the recreated PodGroup with the same name.
+	sched.deletePodGroup(oldPodGroup)
+
+	if _, err := sched.Cache.PodGroups().Get(newPodGroup.Namespace, newPodGroup.Name); err == nil {
+		t.Fatalf("Expected stale delete for old pod group UID %q to remove recreated pod group UID %q, but it remained", oldPodGroup.UID, newPodGroup.UID)
+	}
+}
