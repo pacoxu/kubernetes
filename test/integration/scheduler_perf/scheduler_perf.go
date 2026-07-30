@@ -816,13 +816,13 @@ func RunBenchmarkPerfScheduling(b *testing.B, configFile string, topicName strin
 					fixJSONOutput(b)
 
 					featureGates := featureGatesMerge(tc.FeatureGates, w.FeatureGates)
+					// Cleanup runs in LIFO order. Register the metrics reset before setupTestCase
+					// so it cannot race with background goroutines stopped by setup's cleanups.
+					b.Cleanup(legacyregistry.Reset)
 					scheduler, informerFactory, schedulerDone, tCtx := setupTestCase(b, tc, featureGates, w, opts)
 					tCtx.TB().Cleanup(func() {
 						tCtx.Cancel("workload is done")
 						<-schedulerDone
-						// Reset metrics to prevent metrics generated in current workload gets
-						// carried over to the next workload.
-						legacyregistry.Reset()
 					})
 
 					err := w.isValid(tc.MetricsCollectorConfig)
@@ -944,13 +944,13 @@ func RunIntegrationPerfScheduling(t *testing.T, configFile string, options ...Sc
 						t.Skipf("disabled by label filter %q", TestSchedulingLabelFilter)
 					}
 					featureGates := featureGatesMerge(tc.FeatureGates, w.FeatureGates)
+					// Cleanup runs in LIFO order. Register the metrics reset before setupTestCase
+					// so it cannot race with background goroutines stopped by setup's cleanups.
+					t.Cleanup(legacyregistry.Reset)
 					scheduler, informerFactory, schedulerDone, tCtx := setupTestCase(t, tc, featureGates, w, opts)
 					tCtx.TB().Cleanup(func() {
 						tCtx.Cancel("workload is done")
 						<-schedulerDone
-						// Reset metrics to prevent metrics generated in current workload gets
-						// carried over to the next workload.
-						legacyregistry.Reset()
 					})
 					err := w.isValid(tc.MetricsCollectorConfig)
 					if err != nil {

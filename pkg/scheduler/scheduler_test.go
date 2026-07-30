@@ -37,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/version"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -76,6 +77,45 @@ import (
 
 func init() {
 	metrics.Register()
+}
+
+func TestSchedulerRunWaitsForSchedulingLoop(t *testing.T) {
+	_, ctx := ktesting.NewTestContext(t)
+	ctx, cancel := context.WithCancel(ctx)
+	queue := internalqueue.NewTestQueue(ctx, nil)
+
+	schedulingStarted := make(chan struct{})
+	releaseScheduling := make(chan struct{})
+	schedulerDone := make(chan struct{})
+	sched := &Scheduler{
+		NextEntity: func(klog.Logger) (framework.QueuedEntityInfo, error) {
+			close(schedulingStarted)
+			<-releaseScheduling
+			return nil, nil
+		},
+		SchedulingQueue: queue,
+		Profiles:        profile.Map{},
+	}
+
+	go func() {
+		defer close(schedulerDone)
+		sched.Run(ctx)
+	}()
+
+	<-schedulingStarted
+	cancel()
+	select {
+	case <-schedulerDone:
+		t.Fatal("Scheduler.Run returned while the scheduling loop was still running")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(releaseScheduling)
+	select {
+	case <-schedulerDone:
+	case <-time.After(wait.ForeverTestTimeout):
+		t.Fatal("Scheduler.Run did not return after the scheduling loop stopped")
+	}
 }
 
 func TestSchedulerCreation(t *testing.T) {

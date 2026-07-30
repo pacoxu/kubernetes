@@ -549,13 +549,18 @@ func (sched *Scheduler) Run(ctx context.Context) {
 	// If there are no new pods to schedule, it will be hanging there
 	// and if done in this goroutine it will be blocking closing
 	// SchedulingQueue, in effect causing a deadlock on shutdown.
-	go wait.UntilWithContext(ctx, sched.ScheduleOne, 0)
+	schedulingLoopDone := make(chan struct{})
+	go func() {
+		defer close(schedulingLoopDone)
+		wait.UntilWithContext(ctx, sched.ScheduleOne, 0)
+	}()
 
 	<-ctx.Done()
 	if sched.APIDispatcher != nil {
 		sched.APIDispatcher.Close()
 	}
 	sched.SchedulingQueue.Close()
+	<-schedulingLoopDone
 
 	// If the plugins satisfy the io.Closer interface, they are closed.
 	err := sched.Profiles.Close()
