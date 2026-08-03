@@ -3573,15 +3573,13 @@ func TestPodGroupInfoGetChildrenSorting(t *testing.T) {
 	now := time.Now()
 	pgInfo := func(name, namespace string, creationTime time.Time) *PodGroupInfo {
 		return &PodGroupInfo{
-			Name:      name,
-			Namespace: namespace,
-			PodGroup: &schedulingv1beta1.PodGroup{
+			AbstractPodGroup: NewAbstractPodGroup(&schedulingv1beta1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:              name,
 					Namespace:         namespace,
 					CreationTimestamp: metav1.NewTime(creationTime),
 				},
-			},
+			}),
 		}
 	}
 
@@ -3593,10 +3591,13 @@ func TestPodGroupInfoGetChildrenSorting(t *testing.T) {
 	pgInfo4 := pgInfo("pg4", "default", now)
 
 	pgi := &PodGroupInfo{
-		Name:              "parent-cpg",
-		Namespace:         "default",
-		CompositePodGroup: &schedulingv1alpha3.CompositePodGroup{},
-		Children:          []*PodGroupInfo{pgInfo1, pgInfo2, pgInfo3, pgInfo4},
+		AbstractPodGroup: NewAbstractCompositePodGroup(&schedulingv1alpha3.CompositePodGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "parent-cpg",
+				Namespace: "default",
+			},
+		}),
+		Children: []*PodGroupInfo{pgInfo1, pgInfo2, pgInfo3, pgInfo4},
 	}
 
 	expectedOrder := []*PodGroupInfo{pgInfo3, pgInfo1, pgInfo4, pgInfo2}
@@ -3628,10 +3629,9 @@ func TestQueuedPodGroupInfo_AddCompositePodGroup(t *testing.T) {
 		{
 			name:       "Add child CPG to root",
 			initialCPG: cpgRoot,
-			cpgToAdd:   cpgChild,
-			subtree:    &PodGroupInfo{CompositePodGroup: cpgChild, Name: "cpg-child", Namespace: "ns1", Type: fwk.CompositePodGroupKeyType, Children: make([]*PodGroupInfo, 0)},
+			subtree:    newCompositePodGroupInfoForTest(cpgChild),
 			verify: func(t *testing.T, qpgi *QueuedPodGroupInfo) {
-				if len(qpgi.PodGroupInfo.Children) != 1 || qpgi.PodGroupInfo.Children[0].Name != "cpg-child" {
+				if len(qpgi.PodGroupInfo.Children) != 1 || qpgi.PodGroupInfo.Children[0].GetName() != "cpg-child" {
 					t.Errorf("Child CPG not added to root correctly")
 				}
 			},
@@ -3639,8 +3639,7 @@ func TestQueuedPodGroupInfo_AddCompositePodGroup(t *testing.T) {
 		{
 			name:       "Add CPG with non-existent parent",
 			initialCPG: cpgRoot,
-			cpgToAdd:   cpgNotFoundParent,
-			subtree:    &PodGroupInfo{CompositePodGroup: cpgNotFoundParent, Name: "cpg-orphan", Namespace: "ns1", Type: fwk.CompositePodGroupKeyType, Children: make([]*PodGroupInfo, 0)},
+			subtree:    newCompositePodGroupInfoForTest(cpgNotFoundParent),
 			verify: func(t *testing.T, qpgi *QueuedPodGroupInfo) {
 				if len(qpgi.PodGroupInfo.Children) != 0 {
 					t.Errorf("CPG with non-existent parent should not be added")
@@ -3650,8 +3649,7 @@ func TestQueuedPodGroupInfo_AddCompositePodGroup(t *testing.T) {
 		{
 			name:       "Add standalone CPG (no parent set)",
 			initialCPG: cpgRoot,
-			cpgToAdd:   st.MakeCompositePodGroup().Name("standalone-cpg").Namespace("ns1").Obj(),
-			subtree:    &PodGroupInfo{CompositePodGroup: st.MakeCompositePodGroup().Name("standalone-cpg").Namespace("ns1").Obj(), Name: "standalone-cpg", Namespace: "ns1", Type: fwk.CompositePodGroupKeyType, Children: make([]*PodGroupInfo, 0)},
+			subtree:    newCompositePodGroupInfoForTest(st.MakeCompositePodGroup().Name("standalone-cpg").Namespace("ns1").Obj()),
 			verify: func(t *testing.T, qpgi *QueuedPodGroupInfo) {
 				if len(qpgi.PodGroupInfo.Children) != 0 {
 					t.Errorf("Standalone CPG should not be added to another root")
@@ -3661,13 +3659,12 @@ func TestQueuedPodGroupInfo_AddCompositePodGroup(t *testing.T) {
 		{
 			name:       "Add deeply nested CPG",
 			initialCPG: cpgRoot,
-			cpgToAdd:   cpgNested,
-			subtree:    &PodGroupInfo{CompositePodGroup: cpgNested, Name: "cpg-nested", Namespace: "ns1", Type: fwk.CompositePodGroupKeyType, Children: make([]*PodGroupInfo, 0)},
+			subtree:    newCompositePodGroupInfoForTest(cpgNested),
 			setup: func(qpgi *QueuedPodGroupInfo) {
-				qpgi.PodGroupInfo.Children = append(qpgi.PodGroupInfo.Children, &PodGroupInfo{CompositePodGroup: cpgChild, Name: "cpg-child", Namespace: "ns1", Type: fwk.CompositePodGroupKeyType, Children: make([]*PodGroupInfo, 0)})
+				qpgi.PodGroupInfo.Children = append(qpgi.PodGroupInfo.Children, newCompositePodGroupInfoForTest(cpgChild))
 			},
 			verify: func(t *testing.T, qpgi *QueuedPodGroupInfo) {
-				if len(qpgi.PodGroupInfo.Children[0].Children) != 1 || qpgi.PodGroupInfo.Children[0].Children[0].Name != "cpg-nested" {
+				if len(qpgi.PodGroupInfo.Children[0].Children) != 1 || qpgi.PodGroupInfo.Children[0].Children[0].GetName() != "cpg-nested" {
 					t.Errorf("Deeply nested CPG not added correctly")
 				}
 			},
@@ -3675,38 +3672,19 @@ func TestQueuedPodGroupInfo_AddCompositePodGroup(t *testing.T) {
 		{
 			name:       "Add CPG subtree with nested CPGs",
 			initialCPG: cpgRoot,
-			cpgToAdd:   cpgChild,
-			subtree: &PodGroupInfo{
-				CompositePodGroup: cpgChild,
-				Name:              "cpg-child",
-				Namespace:         "ns1",
-				Type:              fwk.CompositePodGroupKeyType,
-				Children: []*PodGroupInfo{
-					{
-						CompositePodGroup: cpgNested,
-						Name:              "cpg-nested",
-						Namespace:         "ns1",
-						Type:              fwk.CompositePodGroupKeyType,
-						Children: []*PodGroupInfo{
-							{
-								PodGroup:  st.MakePodGroup().Name("pg-nested-leaf").Namespace("ns1").ParentCompositePodGroup("cpg-nested").Obj(),
-								Name:      "pg-nested-leaf",
-								Namespace: "ns1",
-								Type:      fwk.PodGroupKeyType,
-								Children:  make([]*PodGroupInfo, 0),
-							},
-						},
-					},
-				},
-			},
+			subtree: newCompositePodGroupInfoForTest(cpgChild,
+				newCompositePodGroupInfoForTest(cpgNested,
+					newPodGroupInfoForTest(st.MakePodGroup().Name("pg-nested-leaf").Namespace("ns1").ParentCompositePodGroup("cpg-nested").Obj()),
+				),
+			),
 			verify: func(t *testing.T, qpgi *QueuedPodGroupInfo) {
-				if len(qpgi.PodGroupInfo.Children) != 1 || qpgi.PodGroupInfo.Children[0].Name != "cpg-child" {
+				if len(qpgi.PodGroupInfo.Children) != 1 || qpgi.PodGroupInfo.Children[0].GetName() != "cpg-child" {
 					t.Errorf("Child CPG not added correctly")
 				}
-				if len(qpgi.PodGroupInfo.Children[0].Children) != 1 || qpgi.PodGroupInfo.Children[0].Children[0].Name != "cpg-nested" {
+				if len(qpgi.PodGroupInfo.Children[0].Children) != 1 || qpgi.PodGroupInfo.Children[0].Children[0].GetName() != "cpg-nested" {
 					t.Errorf("Nested CPG not added correctly as part of subtree")
 				}
-				if len(qpgi.PodGroupInfo.Children[0].Children[0].Children) != 1 || qpgi.PodGroupInfo.Children[0].Children[0].Children[0].Name != "pg-nested-leaf" {
+				if len(qpgi.PodGroupInfo.Children[0].Children[0].Children) != 1 || qpgi.PodGroupInfo.Children[0].Children[0].Children[0].GetName() != "pg-nested-leaf" {
 					t.Errorf("Leaf PodGroup not added correctly as part of subtree")
 				}
 			},
@@ -3717,18 +3695,15 @@ func TestQueuedPodGroupInfo_AddCompositePodGroup(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			qpgi := &QueuedPodGroupInfo{
 				PodGroupInfo: &PodGroupInfo{
-					CompositePodGroup: tt.initialCPG,
-					Name:              tt.initialCPG.Name,
-					Namespace:         tt.initialCPG.Namespace,
-					Type:              fwk.CompositePodGroupKeyType,
-					Children:          make([]*PodGroupInfo, 0),
+					AbstractPodGroup: NewAbstractCompositePodGroup(tt.initialCPG),
+					Children:         make([]*PodGroupInfo, 0),
 				},
 				QueuedPodInfos: make(map[fwk.EntityKey][]*QueuedPodInfo),
 			}
 			if tt.setup != nil {
 				tt.setup(qpgi)
 			}
-			qpgi.AddAbstractPodGroup(NewAbstractCompositePodGroup(tt.cpgToAdd), tt.subtree)
+			qpgi.AddSubtree(tt.subtree)
 			tt.verify(t, qpgi)
 		})
 	}
@@ -3756,9 +3731,7 @@ func TestQueuedPodGroupInfo_UpdateCompositePodGroup(t *testing.T) {
 			initialCPG: cpgRoot,
 			updateCPG:  cpgChildUpdated,
 			setup: func(qpgi *QueuedPodGroupInfo) {
-				qpgi.PodGroupInfo.Children = append(qpgi.PodGroupInfo.Children, &PodGroupInfo{
-					CompositePodGroup: cpgChild, Name: "cpg-child", Namespace: "ns1", Type: fwk.CompositePodGroupKeyType, Children: make([]*PodGroupInfo, 0),
-				})
+				qpgi.PodGroupInfo.Children = append(qpgi.PodGroupInfo.Children, newCompositePodGroupInfoForTest(cpgChild))
 			},
 			verify: func(t *testing.T, qpgi *QueuedPodGroupInfo) {
 				if len(qpgi.PodGroupInfo.Children) != 1 || qpgi.PodGroupInfo.Children[0].CompositePodGroup.Annotations["updated"] != "true" {
@@ -3784,11 +3757,8 @@ func TestQueuedPodGroupInfo_UpdateCompositePodGroup(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			qpgi := &QueuedPodGroupInfo{
 				PodGroupInfo: &PodGroupInfo{
-					CompositePodGroup: tt.initialCPG,
-					Name:              tt.initialCPG.Name,
-					Namespace:         tt.initialCPG.Namespace,
-					Type:              fwk.CompositePodGroupKeyType,
-					Children:          make([]*PodGroupInfo, 0),
+					AbstractPodGroup: NewAbstractCompositePodGroup(tt.initialCPG),
+					Children:         make([]*PodGroupInfo, 0),
 				},
 				QueuedPodInfos: make(map[fwk.EntityKey][]*QueuedPodInfo),
 			}
@@ -3821,16 +3791,10 @@ func TestQueuedPodGroupInfo_RemoveCompositePodGroup(t *testing.T) {
 			name:      "Remove child CPG and its subtree pods",
 			removeCPG: cpgChild,
 			setup: func(qpgi *QueuedPodGroupInfo) {
-				nestedInfo := &PodGroupInfo{
-					CompositePodGroup: cpgNested, Name: "cpg-nested", Namespace: "ns1", Type: fwk.CompositePodGroupKeyType,
-					Children: []*PodGroupInfo{
-						{PodGroup: pgLeaf, Name: "pg-leaf", Namespace: "ns1", Type: fwk.PodGroupKeyType, Children: make([]*PodGroupInfo, 0)},
-					},
-				}
-				childInfo := &PodGroupInfo{
-					CompositePodGroup: cpgChild, Name: "cpg-child", Namespace: "ns1", Type: fwk.CompositePodGroupKeyType,
-					Children: []*PodGroupInfo{nestedInfo},
-				}
+				nestedInfo := newCompositePodGroupInfoForTest(cpgNested,
+					newPodGroupInfoForTest(pgLeaf),
+				)
+				childInfo := newCompositePodGroupInfoForTest(cpgChild, nestedInfo)
 				qpgi.PodGroupInfo.Children = append(qpgi.PodGroupInfo.Children, childInfo)
 
 				pod := st.MakePod().Name("pod1").Namespace("ns1").Obj()
@@ -3853,9 +3817,7 @@ func TestQueuedPodGroupInfo_RemoveCompositePodGroup(t *testing.T) {
 			name:      "Remove non-existent CPG",
 			removeCPG: st.MakeCompositePodGroup().Name("non-existent").Namespace("ns1").Obj(),
 			setup: func(qpgi *QueuedPodGroupInfo) {
-				qpgi.PodGroupInfo.Children = append(qpgi.PodGroupInfo.Children, &PodGroupInfo{
-					CompositePodGroup: cpgChild, Name: "cpg-child", Namespace: "ns1", Type: fwk.CompositePodGroupKeyType, Children: make([]*PodGroupInfo, 0),
-				})
+				qpgi.PodGroupInfo.Children = append(qpgi.PodGroupInfo.Children, newCompositePodGroupInfoForTest(cpgChild))
 			},
 			verify: func(t *testing.T, qpgi *QueuedPodGroupInfo, removed []*QueuedPodInfo) {
 				if len(qpgi.PodGroupInfo.Children) != 1 {
@@ -3871,17 +3833,11 @@ func TestQueuedPodGroupInfo_RemoveCompositePodGroup(t *testing.T) {
 			removeCPG: cpgNested,
 			setup: func(qpgi *QueuedPodGroupInfo) {
 				pgLeaf2 := st.MakePodGroup().Name("pg-leaf2").Namespace("ns1").ParentCompositePodGroup("cpg-nested").Obj()
-				nestedInfo := &PodGroupInfo{
-					CompositePodGroup: cpgNested, Name: "cpg-nested", Namespace: "ns1", Type: fwk.CompositePodGroupKeyType,
-					Children: []*PodGroupInfo{
-						{PodGroup: pgLeaf, Name: "pg-leaf", Namespace: "ns1", Type: fwk.PodGroupKeyType, Children: make([]*PodGroupInfo, 0)},
-						{PodGroup: pgLeaf2, Name: "pg-leaf2", Namespace: "ns1", Type: fwk.PodGroupKeyType, Children: make([]*PodGroupInfo, 0)},
-					},
-				}
-				childInfo := &PodGroupInfo{
-					CompositePodGroup: cpgChild, Name: "cpg-child", Namespace: "ns1", Type: fwk.CompositePodGroupKeyType,
-					Children: []*PodGroupInfo{nestedInfo},
-				}
+				nestedInfo := newCompositePodGroupInfoForTest(cpgNested,
+					newPodGroupInfoForTest(pgLeaf),
+					newPodGroupInfoForTest(pgLeaf2),
+				)
+				childInfo := newCompositePodGroupInfoForTest(cpgChild, nestedInfo)
 				qpgi.PodGroupInfo.Children = append(qpgi.PodGroupInfo.Children, childInfo)
 
 				pod1 := st.MakePod().Name("pod1").Namespace("ns1").Obj()
@@ -3911,11 +3867,8 @@ func TestQueuedPodGroupInfo_RemoveCompositePodGroup(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			qpgi := &QueuedPodGroupInfo{
 				PodGroupInfo: &PodGroupInfo{
-					CompositePodGroup: cpgRoot,
-					Name:              cpgRoot.Name,
-					Namespace:         cpgRoot.Namespace,
-					Type:              fwk.CompositePodGroupKeyType,
-					Children:          make([]*PodGroupInfo, 0),
+					AbstractPodGroup: NewAbstractCompositePodGroup(cpgRoot),
+					Children:         make([]*PodGroupInfo, 0),
 				},
 				QueuedPodInfos: make(map[fwk.EntityKey][]*QueuedPodInfo),
 			}
@@ -3947,10 +3900,10 @@ func TestQueuedPodGroupInfo_AddPodGroup(t *testing.T) {
 			initialCPG: cpgRoot,
 			pgToAdd:    pgChild,
 			verify: func(t *testing.T, qpgi *QueuedPodGroupInfo) {
-				if len(qpgi.PodGroupInfo.Children) != 1 || qpgi.PodGroupInfo.Children[0].Name != "pg-child" {
+				if len(qpgi.PodGroupInfo.Children) != 1 || qpgi.PodGroupInfo.Children[0].GetName() != "pg-child" {
 					t.Errorf("Child PG not added to root correctly")
 				}
-				if qpgi.PodGroupInfo.Children[0].Type != fwk.PodGroupKeyType {
+				if qpgi.PodGroupInfo.Children[0].GetType() != fwk.PodGroupKeyType {
 					t.Errorf("Child PG has wrong key type")
 				}
 			},
@@ -3981,21 +3934,12 @@ func TestQueuedPodGroupInfo_AddPodGroup(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			qpgi := &QueuedPodGroupInfo{
 				PodGroupInfo: &PodGroupInfo{
-					CompositePodGroup: tt.initialCPG,
-					Name:              tt.initialCPG.Name,
-					Namespace:         tt.initialCPG.Namespace,
-					Type:              fwk.CompositePodGroupKeyType,
-					Children:          make([]*PodGroupInfo, 0),
+					AbstractPodGroup: NewAbstractCompositePodGroup(tt.initialCPG),
+					Children:         make([]*PodGroupInfo, 0),
 				},
 				QueuedPodInfos: make(map[fwk.EntityKey][]*QueuedPodInfo),
 			}
-			qpgi.AddAbstractPodGroup(NewAbstractPodGroup(tt.pgToAdd), &PodGroupInfo{
-				Namespace: tt.pgToAdd.Namespace,
-				Name:      tt.pgToAdd.Name,
-				Type:      fwk.PodGroupKeyType,
-				PodGroup:  tt.pgToAdd,
-				Children:  make([]*PodGroupInfo, 0),
-			})
+			qpgi.AddSubtree(newPodGroupInfoForTest(tt.pgToAdd))
 			tt.verify(t, qpgi)
 		})
 	}
@@ -4023,12 +3967,9 @@ func TestQueuedPodGroupInfo_UpdatePodGroup(t *testing.T) {
 			name: "Update child PG in CPG hierarchy",
 			setup: func() *QueuedPodGroupInfo {
 				return &QueuedPodGroupInfo{
-					PodGroupInfo: &PodGroupInfo{
-						CompositePodGroup: cpgRoot, Name: cpgRoot.Name, Namespace: cpgRoot.Namespace, Type: fwk.CompositePodGroupKeyType,
-						Children: []*PodGroupInfo{
-							{PodGroup: pgChild, Name: pgChild.Name, Namespace: pgChild.Namespace, Type: fwk.PodGroupKeyType, Children: make([]*PodGroupInfo, 0)},
-						},
-					},
+					PodGroupInfo: newCompositePodGroupInfoForTest(cpgRoot,
+						newPodGroupInfoForTest(pgChild),
+					),
 					QueuedPodInfos: make(map[fwk.EntityKey][]*QueuedPodInfo),
 				}
 			},
@@ -4043,9 +3984,7 @@ func TestQueuedPodGroupInfo_UpdatePodGroup(t *testing.T) {
 			name: "Update standalone PG",
 			setup: func() *QueuedPodGroupInfo {
 				return &QueuedPodGroupInfo{
-					PodGroupInfo: &PodGroupInfo{
-						PodGroup: pgStandalone, Name: pgStandalone.Name, Namespace: pgStandalone.Namespace, Type: fwk.PodGroupKeyType, Children: make([]*PodGroupInfo, 0),
-					},
+					PodGroupInfo:   newPodGroupInfoForTest(pgStandalone),
 					QueuedPodInfos: make(map[fwk.EntityKey][]*QueuedPodInfo),
 				}
 			},
@@ -4060,9 +3999,7 @@ func TestQueuedPodGroupInfo_UpdatePodGroup(t *testing.T) {
 			name: "Update non-existent PG",
 			setup: func() *QueuedPodGroupInfo {
 				return &QueuedPodGroupInfo{
-					PodGroupInfo: &PodGroupInfo{
-						CompositePodGroup: cpgRoot, Name: cpgRoot.Name, Namespace: cpgRoot.Namespace, Type: fwk.CompositePodGroupKeyType, Children: make([]*PodGroupInfo, 0),
-					},
+					PodGroupInfo:   newCompositePodGroupInfoForTest(cpgRoot),
 					QueuedPodInfos: make(map[fwk.EntityKey][]*QueuedPodInfo),
 				}
 			},
@@ -4106,12 +4043,9 @@ func TestQueuedPodGroupInfo_RemovePodGroup(t *testing.T) {
 			name:     "Remove child PG and its pods",
 			removePG: pgChild,
 			setup: func(qpgi *QueuedPodGroupInfo) {
-				qpgi.PodGroupInfo = &PodGroupInfo{
-					CompositePodGroup: cpgRoot, Name: cpgRoot.Name, Namespace: cpgRoot.Namespace, Type: fwk.CompositePodGroupKeyType,
-					Children: []*PodGroupInfo{
-						{PodGroup: pgChild, Name: pgChild.Name, Namespace: pgChild.Namespace, Type: fwk.PodGroupKeyType, Children: make([]*PodGroupInfo, 0)},
-					},
-				}
+				qpgi.PodGroupInfo = newCompositePodGroupInfoForTest(cpgRoot,
+					newPodGroupInfoForTest(pgChild),
+				)
 				pod := st.MakePod().Name("pod1").Namespace("ns1").Obj()
 				pod.Spec.SchedulingGroup = &v1.PodSchedulingGroup{PodGroupName: func() *string { s := "pg-child"; return &s }()}
 				qpgi.QueuedPodInfos[podKeyChild] = []*QueuedPodInfo{{PodInfo: &PodInfo{Pod: pod}}}
@@ -4132,9 +4066,7 @@ func TestQueuedPodGroupInfo_RemovePodGroup(t *testing.T) {
 			name:     "Remove standalone PG and its pods (root removal)",
 			removePG: pgStandalone,
 			setup: func(qpgi *QueuedPodGroupInfo) {
-				qpgi.PodGroupInfo = &PodGroupInfo{
-					PodGroup: pgStandalone, Name: pgStandalone.Name, Namespace: pgStandalone.Namespace, Type: fwk.PodGroupKeyType, Children: make([]*PodGroupInfo, 0),
-				}
+				qpgi.PodGroupInfo = newPodGroupInfoForTest(pgStandalone)
 				pod := st.MakePod().Name("pod2").Namespace("ns1").Obj()
 				pod.Spec.SchedulingGroup = &v1.PodSchedulingGroup{PodGroupName: func() *string { s := "pg-standalone"; return &s }()}
 				qpgi.QueuedPodInfos[podKeyStandalone] = []*QueuedPodInfo{{PodInfo: &PodInfo{Pod: pod}}}
@@ -4186,12 +4118,9 @@ func TestQueuedPodGroupInfo_AddPod(t *testing.T) {
 				return p
 			}(),
 			setup: func(qpgi *QueuedPodGroupInfo) {
-				qpgi.PodGroupInfo = &PodGroupInfo{
-					CompositePodGroup: cpgRoot, Name: cpgRoot.Name, Namespace: cpgRoot.Namespace, Type: fwk.CompositePodGroupKeyType,
-					Children: []*PodGroupInfo{
-						{PodGroup: pgChild, Name: pgChild.Name, Namespace: pgChild.Namespace, Type: fwk.PodGroupKeyType, Children: make([]*PodGroupInfo, 0)},
-					},
-				}
+				qpgi.PodGroupInfo = newCompositePodGroupInfoForTest(cpgRoot,
+					newPodGroupInfoForTest(pgChild),
+				)
 			},
 			verify: func(t *testing.T, qpgi *QueuedPodGroupInfo) {
 				if len(qpgi.QueuedPodInfos[podKeyChild]) != 1 {
@@ -4207,9 +4136,7 @@ func TestQueuedPodGroupInfo_AddPod(t *testing.T) {
 				return p
 			}(),
 			setup: func(qpgi *QueuedPodGroupInfo) {
-				qpgi.PodGroupInfo = &PodGroupInfo{
-					PodGroup: pgStandalone, Name: pgStandalone.Name, Namespace: pgStandalone.Namespace, Type: fwk.PodGroupKeyType, Children: make([]*PodGroupInfo, 0),
-				}
+				qpgi.PodGroupInfo = newPodGroupInfoForTest(pgStandalone)
 			},
 			verify: func(t *testing.T, qpgi *QueuedPodGroupInfo) {
 				if len(qpgi.QueuedPodInfos[podKeyStandalone]) != 1 {
@@ -4225,27 +4152,11 @@ func TestQueuedPodGroupInfo_AddPod(t *testing.T) {
 				return p
 			}(),
 			setup: func(qpgi *QueuedPodGroupInfo) {
-				qpgi.PodGroupInfo = &PodGroupInfo{
-					PodGroup: pgStandalone, Name: pgStandalone.Name, Namespace: pgStandalone.Namespace, Type: fwk.PodGroupKeyType, Children: make([]*PodGroupInfo, 0),
-				}
+				qpgi.PodGroupInfo = newPodGroupInfoForTest(pgStandalone)
 			},
 			verify: func(t *testing.T, qpgi *QueuedPodGroupInfo) {
 				if len(qpgi.QueuedPodInfos) != 0 {
 					t.Errorf("Pod added despite non-existent leaf PG")
-				}
-			},
-		},
-		{
-			name: "Add pod without scheduling group",
-			pod:  st.MakePod().Name("pod4").Namespace("ns1").Obj(),
-			setup: func(qpgi *QueuedPodGroupInfo) {
-				qpgi.PodGroupInfo = &PodGroupInfo{
-					PodGroup: pgStandalone, Name: pgStandalone.Name, Namespace: pgStandalone.Namespace, Type: fwk.PodGroupKeyType, Children: make([]*PodGroupInfo, 0),
-				}
-			},
-			verify: func(t *testing.T, qpgi *QueuedPodGroupInfo) {
-				if len(qpgi.QueuedPodInfos) != 0 {
-					t.Errorf("Pod added despite no scheduling group")
 				}
 			},
 		},
@@ -4328,9 +4239,7 @@ func TestQueuedPodGroupInfo_UpdateAndRemovePod(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			qpgi := &QueuedPodGroupInfo{
-				PodGroupInfo: &PodGroupInfo{
-					PodGroup: pgStandalone, Name: pgStandalone.Name, Namespace: pgStandalone.Namespace, Type: fwk.PodGroupKeyType, Children: make([]*PodGroupInfo, 0),
-				},
+				PodGroupInfo:   newPodGroupInfoForTest(pgStandalone),
 				QueuedPodInfos: make(map[fwk.EntityKey][]*QueuedPodInfo),
 			}
 			pInfo1 := &QueuedPodInfo{PodInfo: &PodInfo{Pod: pod1}}
@@ -4401,27 +4310,23 @@ func TestPodGroupInfo_GetUnscheduledPods(t *testing.T) {
 		{
 			name: "Standalone PodGroupInfo with unscheduled pods",
 			pgi: &PodGroupInfo{
-				PodGroup:        pgStandalone,
-				UnscheduledPods: []*v1.Pod{pod1, pod2},
-				Type:            fwk.PodGroupKeyType,
+				AbstractPodGroup: NewAbstractPodGroup(pgStandalone),
+				UnscheduledPods:  []*v1.Pod{pod1, pod2},
 			},
 			expected: []*v1.Pod{pod1, pod2},
 		},
 		{
 			name: "PodGroupInfo with children",
 			pgi: &PodGroupInfo{
-				CompositePodGroup: cpgParent,
-				Type:              fwk.CompositePodGroupKeyType,
+				AbstractPodGroup: NewAbstractCompositePodGroup(cpgParent),
 				Children: []*PodGroupInfo{
 					{
-						PodGroup:        pgChild1,
-						UnscheduledPods: []*v1.Pod{pod1},
-						Type:            fwk.PodGroupKeyType,
+						AbstractPodGroup: NewAbstractPodGroup(pgChild1),
+						UnscheduledPods:  []*v1.Pod{pod1},
 					},
 					{
-						PodGroup:        pgChild2,
-						UnscheduledPods: []*v1.Pod{pod2, pod3},
-						Type:            fwk.PodGroupKeyType,
+						AbstractPodGroup: NewAbstractPodGroup(pgChild2),
+						UnscheduledPods:  []*v1.Pod{pod2, pod3},
 					},
 				},
 			},
@@ -4430,29 +4335,24 @@ func TestPodGroupInfo_GetUnscheduledPods(t *testing.T) {
 		{
 			name: "Multi-level PodGroupInfo with children",
 			pgi: &PodGroupInfo{
-				CompositePodGroup: cpgRoot,
-				Type:              fwk.CompositePodGroupKeyType,
+				AbstractPodGroup: NewAbstractCompositePodGroup(cpgRoot),
 				Children: []*PodGroupInfo{
 					{
-						CompositePodGroup: cpgSub,
-						Type:              fwk.CompositePodGroupKeyType,
+						AbstractPodGroup: NewAbstractCompositePodGroup(cpgSub),
 						Children: []*PodGroupInfo{
 							{
-								PodGroup:        pgChild1,
-								UnscheduledPods: []*v1.Pod{pod1},
-								Type:            fwk.PodGroupKeyType,
+								AbstractPodGroup: NewAbstractPodGroup(pgChild1),
+								UnscheduledPods:  []*v1.Pod{pod1},
 							},
 							{
-								PodGroup:        pgChild2,
-								UnscheduledPods: []*v1.Pod{pod2, pod3},
-								Type:            fwk.PodGroupKeyType,
+								AbstractPodGroup: NewAbstractPodGroup(pgChild2),
+								UnscheduledPods:  []*v1.Pod{pod2, pod3},
 							},
 						},
 					},
 					{
-						PodGroup:        pgChild3,
-						UnscheduledPods: []*v1.Pod{pod4},
-						Type:            fwk.PodGroupKeyType,
+						AbstractPodGroup: NewAbstractPodGroup(pgChild3),
+						UnscheduledPods:  []*v1.Pod{pod4},
 					},
 				},
 			},
@@ -4467,5 +4367,19 @@ func TestPodGroupInfo_GetUnscheduledPods(t *testing.T) {
 				t.Errorf("GetUnscheduledPods() mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func newPodGroupInfoForTest(pg *schedulingv1beta1.PodGroup, children ...*PodGroupInfo) *PodGroupInfo {
+	return &PodGroupInfo{
+		AbstractPodGroup: NewAbstractPodGroup(pg),
+		Children:         children,
+	}
+}
+
+func newCompositePodGroupInfoForTest(cpg *schedulingv1alpha3.CompositePodGroup, children ...*PodGroupInfo) *PodGroupInfo {
+	return &PodGroupInfo{
+		AbstractPodGroup: NewAbstractCompositePodGroup(cpg),
+		Children:         children,
 	}
 }
