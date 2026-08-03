@@ -743,7 +743,7 @@ func TestScheduleOnePodGroup_FinishesAttemptWhenAllPoppedPodsAreAssumed(t *testi
 			}
 
 			cache := internalcache.New(ctx, nil, true, false)
-			cache.AddPodGroup(podGroup)
+			cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(podGroup))
 			cache.AddPodGroupMember(p1)
 			assumedP1 := p1.DeepCopy()
 			assumedP1.Spec.NodeName = "node1"
@@ -752,7 +752,7 @@ func TestScheduleOnePodGroup_FinishesAttemptWhenAllPoppedPodsAreAssumed(t *testi
 			}
 
 			queue := internalqueue.NewTestQueue(ctx, schedFwk.QueueSortFunc())
-			queue.AddPodGroup(logger, podGroup)
+			queue.AddAbstractPodGroup(logger, framework.NewAbstractPodGroup(podGroup))
 			queue.Add(ctx, p1)
 			entity, err := queue.Pop(logger)
 			if err != nil {
@@ -951,7 +951,7 @@ func TestPodGroupCycle_FillsPodResultsOnFewerResults(t *testing.T) {
 	cache := internalcache.New(ctx, nil, true, true /* CompositePodGroup */)
 	logger, ctx := ktesting.NewTestContext(t)
 	cache.AddNode(logger, testNode)
-	cache.AddPodGroup(testPodGroup)
+	cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(testPodGroup))
 
 	handledPods := make(map[string]*fwk.Status)
 	var lock sync.Mutex
@@ -1140,7 +1140,7 @@ func TestPodGroupCycle_PodGroupPostFilter(t *testing.T) {
 			cache := internalcache.New(ctx, nil, true, true /* CompositePodGroup */)
 			logger, ctx := ktesting.NewTestContext(t)
 			cache.AddNode(logger, testNode)
-			cache.AddPodGroup(testPodGroup)
+			cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(testPodGroup))
 
 			sched := &Scheduler{
 				Profiles:               profile.Map{"test-scheduler": schedFwk},
@@ -1498,7 +1498,7 @@ func TestPodGroupSchedulingAlgorithm(t *testing.T) {
 
 					cache := internalcache.New(ctx, nil, true, cpgEnabled /* CompositePodGroup */)
 					cache.AddNode(logger, testNode)
-					cache.AddPodGroup(testPodGroup)
+					cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(testPodGroup))
 
 					sched := &Scheduler{
 						Cache:            cache,
@@ -1938,7 +1938,7 @@ func TestSubmitPodGroupAlgorithmResult(t *testing.T) {
 			}
 
 			// Create the pod group and add the pods to queue and pop the group to set up internal queue state correctly.
-			schedulingQueue.AddPodGroup(logger, pg)
+			schedulingQueue.AddAbstractPodGroup(logger, framework.NewAbstractPodGroup(pg))
 			// Advance the clock between additions to keep pod ordering deterministic.
 			schedulingQueue.Add(ctx, p1)
 			fakeClock.Step(time.Second)
@@ -2885,7 +2885,7 @@ func TestPodGroupSchedulingPlacementAlgorithm(t *testing.T) {
 				for _, node := range nodes {
 					cache.AddNode(logger, node)
 				}
-				cache.AddPodGroup(testPodGroup)
+				cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(testPodGroup))
 
 				sched := &Scheduler{
 					Cache:            cache,
@@ -3093,7 +3093,7 @@ func TestPodGroupSchedulingPlacementAlgorithm_Scoring(t *testing.T) {
 				testPodGroup := &schedulingv1beta1.PodGroup{
 					ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: "default"},
 				}
-				cache.AddPodGroup(testPodGroup)
+				cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(testPodGroup))
 
 				sched := &Scheduler{
 					Cache:            cache,
@@ -3263,7 +3263,7 @@ func TestPlacementCycleStateLifecycle(t *testing.T) {
 			testPodGroup := &schedulingv1beta1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: "default"},
 			}
-			cache.AddPodGroup(testPodGroup)
+			cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(testPodGroup))
 
 			sched := &Scheduler{
 				Cache:            cache,
@@ -3530,9 +3530,9 @@ func TestPlacementCycleStateLifecycle_MultiLevel(t *testing.T) {
 	for _, node := range nodes {
 		cache.AddNode(logger, node)
 	}
-	cache.AddCompositePodGroup(logger, rootcpg)
-	cache.AddCompositePodGroup(logger, midcpg)
-	cache.AddPodGroup(pg)
+	cache.AddAbstractPodGroup(framework.NewAbstractCompositePodGroup(rootcpg))
+	cache.AddAbstractPodGroup(framework.NewAbstractCompositePodGroup(midcpg))
+	cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(pg))
 
 	sched := &Scheduler{
 		Cache:            cache,
@@ -4066,9 +4066,9 @@ func TestCPGSchedulingPlacementAlgorithm(t *testing.T) {
 			for _, node := range nodes {
 				cache.AddNode(logger, node)
 			}
-			cache.AddCompositePodGroup(logger, cpg)
-			cache.AddPodGroup(pg1)
-			cache.AddPodGroup(pg2)
+			cache.AddAbstractPodGroup(framework.NewAbstractCompositePodGroup(cpg))
+			cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(pg1))
+			cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(pg2))
 			cache.AddPodGroupMember(p1)
 			cache.AddPodGroupMember(p2)
 
@@ -4364,9 +4364,9 @@ func TestCPGSchedulingPlacementAlgorithm_Scoring(t *testing.T) {
 			for _, node := range nodes {
 				cache.AddNode(logger, node)
 			}
-			cache.AddCompositePodGroup(logger, cpg)
-			cache.AddPodGroup(pg1)
-			cache.AddPodGroup(pg2)
+			cache.AddAbstractPodGroup(framework.NewAbstractCompositePodGroup(cpg))
+			cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(pg1))
+			cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(pg2))
 			cache.AddPodGroupMember(p1)
 			cache.AddPodGroupMember(p2)
 
@@ -4488,7 +4488,7 @@ func TestPodGroupCycle_NominatedNodes(t *testing.T) {
 	}
 
 	cache := internalcache.New(ctx, nil, true, true /* CompositePodGroup */)
-	cache.AddPodGroup(testPodGroup)
+	cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(testPodGroup))
 	sched := &Scheduler{
 		Profiles:         profile.Map{"test-scheduler": schedFwk},
 		Cache:            cache,
@@ -4851,10 +4851,10 @@ func TestCPGHierarchicalScheduling_ScheduleOnePodGroup(t *testing.T) {
 	}
 
 	cache := internalcache.New(ctx, nil, true, true /* CompositePodGroup */)
-	cache.AddCompositePodGroup(logger, cpgRoot)
-	cache.AddPodGroup(pg1)
-	cache.AddPodGroup(pg2)
-	cache.AddPodGroup(pg3)
+	cache.AddAbstractPodGroup(framework.NewAbstractCompositePodGroup(cpgRoot))
+	cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(pg1))
+	cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(pg2))
+	cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(pg3))
 
 	sched := &Scheduler{
 		Profiles:         profile.Map{"test-scheduler": schedFwk},
@@ -4970,7 +4970,7 @@ func TestCPGHierarchicalScheduling_Internal(t *testing.T) {
 				ParentCompositePodGroupName: new(parentCPG),
 			},
 		}
-		cache.AddPodGroup(pg)
+		cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(pg))
 		return pg
 	}
 
@@ -4992,7 +4992,7 @@ func TestCPGHierarchicalScheduling_Internal(t *testing.T) {
 				ParentCompositePodGroupName: parentCPG,
 			},
 		}
-		cache.AddCompositePodGroup(logger, cpg)
+		cache.AddAbstractPodGroup(framework.NewAbstractCompositePodGroup(cpg))
 		return cpg
 	}
 
@@ -5254,7 +5254,7 @@ func TestCPGMinGroupCount_Internal(t *testing.T) {
 				ParentCompositePodGroupName: parentCPG,
 			},
 		}
-		cache.AddCompositePodGroup(logger, cpg)
+		cache.AddAbstractPodGroup(framework.NewAbstractCompositePodGroup(cpg))
 		return cpg
 	}
 
@@ -5276,7 +5276,7 @@ func TestCPGMinGroupCount_Internal(t *testing.T) {
 				ParentCompositePodGroupName: new(parentCPG),
 			},
 		}
-		cache.AddPodGroup(pg)
+		cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(pg))
 		return pg
 	}
 
@@ -5486,7 +5486,7 @@ func TestCPGBasicWithGangChildren_Internal(t *testing.T) {
 				ParentCompositePodGroupName: parentCPG,
 			},
 		}
-		cache.AddCompositePodGroup(logger, cpg)
+		cache.AddAbstractPodGroup(framework.NewAbstractCompositePodGroup(cpg))
 		return cpg
 	}
 
@@ -5508,7 +5508,7 @@ func TestCPGBasicWithGangChildren_Internal(t *testing.T) {
 				ParentCompositePodGroupName: new(parentCPG),
 			},
 		}
-		cache.AddPodGroup(pg)
+		cache.AddAbstractPodGroup(framework.NewAbstractPodGroup(pg))
 		return pg
 	}
 
