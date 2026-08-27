@@ -5987,10 +5987,10 @@ func TestPodGroupPotentiallyFeasible(t *testing.T) {
 
 			placementCycleState := framework.NewCycleState()
 			podGroupInfo := &framework.PodGroupInfo{
+				GenericPodGroup: framework.NewGenericPodGroup(st.MakePodGroup().Name("pg").Obj()),
 				UnscheduledPods: []*v1.Pod{
 					st.MakePod().Name("pod").UID("pod").PodGroupName("pg").Obj(),
 				},
-				PodGroup: st.MakePodGroup().Name("pg").Obj(),
 			}
 			placementProgress := framework.PlacementProgress{
 				Remaining: 1,
@@ -6036,11 +6036,8 @@ func TestPodGroupCycle_PodStatusConditions(t *testing.T) {
 			fwk.PodGroupKey("default", "pg"): {qInfo1, qInfo2, qInfo3},
 		},
 		PodGroupInfo: &framework.PodGroupInfo{
-			Name:            "pg",
-			Namespace:       "default",
-			Type:            fwk.PodGroupKeyType,
+			GenericPodGroup: framework.NewGenericPodGroup(pg1),
 			UnscheduledPods: pg1Pods,
-			PodGroup:        pg1,
 		},
 	}
 
@@ -6050,24 +6047,15 @@ func TestPodGroupCycle_PodStatusConditions(t *testing.T) {
 			fwk.PodGroupKey("default", "pg3"): {qInfo5},
 		},
 		PodGroupInfo: &framework.PodGroupInfo{
-			Name:              "cpg",
-			Namespace:         "default",
-			Type:              fwk.CompositePodGroupKeyType,
-			CompositePodGroup: cpg,
+			GenericPodGroup: framework.NewGenericCompositePodGroup(cpg),
 			Children: []*framework.PodGroupInfo{
 				{
-					Name:            "pg2",
-					Namespace:       "default",
-					Type:            fwk.PodGroupKeyType,
+					GenericPodGroup: framework.NewGenericPodGroup(pg2),
 					UnscheduledPods: pg2Pods,
-					PodGroup:        pg2,
 				},
 				{
-					Name:            "pg3",
-					Namespace:       "default",
-					Type:            fwk.PodGroupKeyType,
+					GenericPodGroup: framework.NewGenericPodGroup(pg3),
 					UnscheduledPods: pg3Pods,
-					PodGroup:        pg3,
 				},
 			},
 		},
@@ -7067,10 +7055,10 @@ func TestPodGroupCycle_PodStatusConditions(t *testing.T) {
 					cache := internalcache.New(ctx, nil, true, cpgEnabled)
 					cache.AddNode(logger, testNode)
 					for _, cpg := range tt.compositePodGroups {
-						cache.AddCompositePodGroup(logger, cpg)
+						cache.AddGenericPodGroup(framework.NewGenericCompositePodGroup(cpg))
 					}
 					for _, pg := range tt.podGroups {
-						cache.AddPodGroup(pg)
+						cache.AddGenericPodGroup(framework.NewGenericPodGroup(pg))
 					}
 					for _, p := range tt.pods {
 						cache.AddPodGroupMember(p)

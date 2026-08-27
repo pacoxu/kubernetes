@@ -1531,7 +1531,7 @@ func TestHandleSchedulingFailure_PodGroupFitErrorCloned(t *testing.T) {
 	informerFactory.Start(ctx.Done())
 	informerFactory.WaitForCacheSync(ctx.Done())
 
-	queue.AddPodGroup(logger, pg)
+	queue.AddGenericPodGroup(logger, framework.NewGenericPodGroup(pg))
 	queue.Add(ctx, pod1)
 	queue.Add(ctx, pod2)
 
