@@ -149,14 +149,18 @@ type claimTracker struct {
 	cache *assumecache.AssumeCache
 	// inFlightMutex syncs access to inFlightAllocations.
 	inFlightMutex sync.RWMutex
+	// inFlightGeneration identifies different pending allocations for the same
+	// ResourceClaim. It prevents a scheduling cycle from acquiring an allocation
+	// which replaced the one that it inspected in PreFilter.
+	inFlightGeneration uint64
 	// inFlightAllocations is a map from claim UUIDs to claim objects for those claims
 	// for which allocation was triggered during a scheduling cycle and the
 	// corresponding claim status update call in PreBind has not been done
-	// yet. It also includes a reference count tracking how many actively
-	// scheduling Pods in a PodGroup are using that pending allocation. If
-	// another pod outside the PodGroup needs the claim, the pod is treated as
-	// "not schedulable yet". For those pods, the cluster event for the
-	// claim status update will make them schedulable.
+	// yet. It also tracks which actively scheduling Pods are using a pending
+	// allocation and the sharing scope which admitted them. The default
+	// scheduler uses the PodGroup UID as that scope, which remains valid across
+	// PodGroup scheduling cycles. Pods outside the scope are treated as not
+	// schedulable until the ResourceClaim update is observed.
 	//
 	// This mechanism avoids the following problem:
 	// - Pod A triggers allocation for claim X.
@@ -176,17 +180,10 @@ type claimTracker struct {
 	// - The assume cache is now not reflecting that the claim is allocated,
 	//   which could lead to reusing the same resource for some other claim.
 	//
-	// For pods in a PodGroup, a pending allocation may be shared among several
-	// pods in the group. In the PreBind phase, the allocation will be written
-	// for the first pod that succeeds. The scenario above is prevented by
-	// keeping the pending allocation in-flight as long as it has not been
-	// unreserved for every pod in the group, as tracked by
-	// inFlightAllocationSharers.
-	//
-	// A sync.Map is used because in practice sharing of a claim between
-	// pods is expected to be rare compared to per-pod claim, so we end up
-	// hitting the "multiple goroutines read, write, and overwrite entries
-	// for disjoint sets of keys" case that sync.Map is optimized for.
+	// In PreBind, the first successful API update writes the allocation. Other
+	// sharers accept that allocation only when it matches their pending result,
+	// then append their own reservation. The entry remains until all registered
+	// Pods have either completed PreBind or Unreserve.
 	inFlightAllocations map[types.UID]inFlightAllocation
 	allocatedDevices    *allocatedDevices
 	logger              klog.Logger
@@ -195,6 +192,171 @@ type claimTracker struct {
 type inFlightAllocation struct {
 	claim   *resourceapi.ResourceClaim
 	sharers int
+
+	// The fields below are used by the scheduler's scoped pending-allocation
+	// protocol. Legacy ResourceClaimTracker callers continue to use sharers.
+	generation   uint64
+	sharingScope types.UID
+	podSharers   sets.Set[types.UID]
+	shareable    bool
+	published    bool
+}
+
+// pendingAllocationHandle identifies the allocation which a scheduling cycle
+// inspected. The allocation is immutable while the handle is valid.
+type pendingAllocationHandle struct {
+	claimUID   types.UID
+	generation uint64
+	allocation *resourceapi.AllocationResult
+}
+
+type pendingAllocationRelease struct {
+	deleted   bool
+	published bool
+}
+
+var (
+	errPendingAllocationChanged      = errors.New("pending allocation changed")
+	errPendingAllocationNotShareable = errors.New("pending allocation cannot be shared by this pod")
+)
+
+// scopedPendingAllocationTracker is an optional extension of
+// [fwk.ResourceClaimTracker]. The default scheduler implementation supports it;
+// external implementations keep the legacy, single-cycle behavior.
+type scopedPendingAllocationTracker interface {
+	inspectPendingAllocation(claimUID, sharingScope, podUID types.UID) (*pendingAllocationHandle, error)
+	acquirePendingAllocation(handle *pendingAllocationHandle, sharingScope, podUID types.UID) (*resourceapi.AllocationResult, error)
+	signalScopedClaimPendingAllocation(claimUID types.UID, allocatedClaim *resourceapi.ResourceClaim, sharingScope, podUID types.UID, shareable bool) (*pendingAllocationHandle, error)
+	markPendingAllocationPublished(handle *pendingAllocationHandle, allocatedClaim *resourceapi.ResourceClaim)
+	releasePendingAllocation(handle *pendingAllocationHandle, podUID types.UID) pendingAllocationRelease
+}
+
+var _ scopedPendingAllocationTracker = &claimTracker{}
+
+func (c *claimTracker) inspectPendingAllocation(claimUID, sharingScope, podUID types.UID) (*pendingAllocationHandle, error) {
+	c.inFlightMutex.RLock()
+	defer c.inFlightMutex.RUnlock()
+
+	inFlight, found := c.inFlightAllocations[claimUID]
+	if !found || inFlight.claim == nil || inFlight.podSharers == nil {
+		return nil, nil
+	}
+	if inFlight.sharingScope != sharingScope || (!inFlight.shareable && !inFlight.podSharers.Has(podUID)) {
+		return nil, errPendingAllocationNotShareable
+	}
+	return &pendingAllocationHandle{
+		claimUID:   claimUID,
+		generation: inFlight.generation,
+		allocation: inFlight.claim.Status.Allocation,
+	}, nil
+}
+
+func (c *claimTracker) acquirePendingAllocation(handle *pendingAllocationHandle, sharingScope, podUID types.UID) (*resourceapi.AllocationResult, error) {
+	if handle == nil {
+		return nil, errPendingAllocationChanged
+	}
+
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
+
+	inFlight, found := c.inFlightAllocations[handle.claimUID]
+	if !found || inFlight.generation != handle.generation || inFlight.claim == nil || inFlight.podSharers == nil {
+		return nil, errPendingAllocationChanged
+	}
+	if inFlight.sharingScope != sharingScope || (!inFlight.shareable && !inFlight.podSharers.Has(podUID)) {
+		return nil, errPendingAllocationNotShareable
+	}
+	if inFlight.podSharers.Has(podUID) {
+		return inFlight.claim.Status.Allocation, nil
+	}
+
+	inFlight.podSharers.Insert(podUID)
+	c.inFlightAllocations[handle.claimUID] = inFlight
+	c.logger.V(5).Info("Added pod share for in-flight claim", "claim", klog.KObj(inFlight.claim), "uid", handle.claimUID, "podUID", podUID, "sharers", inFlight.podSharers.Len())
+	return inFlight.claim.Status.Allocation, nil
+}
+
+func (c *claimTracker) signalScopedClaimPendingAllocation(claimUID types.UID, allocatedClaim *resourceapi.ResourceClaim, sharingScope, podUID types.UID, shareable bool) (*pendingAllocationHandle, error) {
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
+
+	if _, found := c.inFlightAllocations[claimUID]; found {
+		return nil, errPendingAllocationChanged
+	}
+
+	// Check that the claim really is unallocated. The Pod's CycleState may be
+	// stale and this claim may have been allocated since that was calculated.
+	assumedClaim, err := c.Get(allocatedClaim.Namespace, allocatedClaim.Name)
+	if err != nil {
+		return nil, fmt.Errorf("look up assumed claim %s/%s, UID=%s: %w", allocatedClaim.Namespace, allocatedClaim.Name, claimUID, err)
+	}
+	if assumedClaim.UID != claimUID || assumedClaim.Status.Allocation != nil {
+		return nil, errPendingAllocationChanged
+	}
+
+	c.inFlightGeneration++
+	inFlight := inFlightAllocation{
+		claim:        allocatedClaim,
+		generation:   c.inFlightGeneration,
+		sharingScope: sharingScope,
+		podSharers:   sets.New(podUID),
+		shareable:    shareable,
+	}
+	c.inFlightAllocations[claimUID] = inFlight
+	c.logger.V(5).Info("Added scoped in-flight claim", "claim", klog.KObj(allocatedClaim), "uid", claimUID, "podUID", podUID, "sharingScope", sharingScope, "shareable", shareable)
+	return &pendingAllocationHandle{
+		claimUID:   claimUID,
+		generation: inFlight.generation,
+		allocation: allocatedClaim.Status.Allocation,
+	}, nil
+}
+
+func (c *claimTracker) markPendingAllocationPublished(handle *pendingAllocationHandle, allocatedClaim *resourceapi.ResourceClaim) {
+	if handle == nil || allocatedClaim == nil {
+		return
+	}
+
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
+
+	inFlight, found := c.inFlightAllocations[handle.claimUID]
+	if !found || inFlight.generation != handle.generation {
+		return
+	}
+	inFlight.published = true
+	// Keep the pending claim's reservation state unchanged. Existing callers
+	// use it only to account for allocated devices, while AllocationTimestamp
+	// must follow the successfully published allocation.
+	inFlight.claim = inFlight.claim.DeepCopy()
+	inFlight.claim.Status.Allocation = allocatedClaim.Status.Allocation
+	c.inFlightAllocations[handle.claimUID] = inFlight
+}
+
+func (c *claimTracker) releasePendingAllocation(handle *pendingAllocationHandle, podUID types.UID) pendingAllocationRelease {
+	if handle == nil {
+		return pendingAllocationRelease{}
+	}
+
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
+
+	inFlight, found := c.inFlightAllocations[handle.claimUID]
+	if !found || inFlight.generation != handle.generation || inFlight.podSharers == nil || !inFlight.podSharers.Has(podUID) {
+		return pendingAllocationRelease{}
+	}
+
+	inFlight.podSharers.Delete(podUID)
+	result := pendingAllocationRelease{published: inFlight.published}
+	if inFlight.podSharers.Len() == 0 && inFlight.sharers == 0 {
+		delete(c.inFlightAllocations, handle.claimUID)
+		result.deleted = true
+		c.logger.V(5).Info("Removed scoped in-flight claim", "claim", klog.KObj(inFlight.claim), "uid", handle.claimUID, "podUID", podUID, "published", inFlight.published)
+		return result
+	}
+
+	c.inFlightAllocations[handle.claimUID] = inFlight
+	c.logger.V(5).Info("Scoped in-flight claim is still used by other pods", "claim", klog.KObj(inFlight.claim), "uid", handle.claimUID, "podUID", podUID, "sharers", inFlight.podSharers.Len())
+	return result
 }
 
 func (c *claimTracker) GetPendingAllocation(claimUID types.UID) *resourceapi.AllocationResult {
@@ -214,6 +376,9 @@ func (c *claimTracker) SignalClaimPendingAllocation(claimUID types.UID, allocate
 
 	inFlight, found := c.inFlightAllocations[claimUID]
 	if found {
+		if inFlight.podSharers != nil {
+			return fmt.Errorf("claim %s has a scoped pending allocation", claimUID)
+		}
 		inFlight.sharers++
 		c.inFlightAllocations[claimUID] = inFlight
 
@@ -258,6 +423,10 @@ func (c *claimTracker) MaybeRemoveClaimPendingAllocation(claimUID types.UID, for
 	// The assume cache doesn't log this, but maybe it should.
 	if !found {
 		c.logger.V(5).Info("Redundant remove of in-flight claim, not found", "uid", claimUID)
+		return false
+	}
+	if inFlight.podSharers != nil {
+		c.logger.V(5).Info("Legacy removal ignored for scoped in-flight claim", "uid", claimUID)
 		return false
 	}
 	claim := inFlight.claim

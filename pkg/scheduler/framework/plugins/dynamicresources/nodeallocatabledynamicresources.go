@@ -367,6 +367,27 @@ func (pl *DynamicResources) buildNodeAllocatableDRAInfo(pod *v1.Pod, nodeAllocat
 	return nodeAllocatableClaimInfoList, nil
 }
 
+func (pl *DynamicResources) allocationHasNodeAllocatableMappedDevice(allocation *resourceapi.AllocationResult) (bool, error) {
+	if allocation == nil {
+		return false, nil
+	}
+	for _, result := range allocation.Devices.Results {
+		device, err := getDeviceFromManager(pl.draManager, &result)
+		if err != nil {
+			return false, err
+		}
+		if device == nil {
+			continue
+		}
+		for _, resource := range device.NodeAllocatableResources {
+			if resource.Mapping != nil {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 // validateNodeAllocatableDRAClaimSharing ensures that a node-allocatable DRA claim is not already in use by another pod on this node.
 func (pl *DynamicResources) validateNodeAllocatableDRAClaimSharing(pod *v1.Pod, claim *resourceapi.ResourceClaim, state *stateData, podGroupState *podGroupStateData) *fwk.Status {
 	if claim == nil {

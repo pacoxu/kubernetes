@@ -120,6 +120,12 @@ type stateData struct {
 	// This map is used in the Filter phase to prevent sharing these mapped claims across pods.
 	// Populated in PreFilter and read in Filter.
 	claimHasNodeAllocatableMappedDevice map[types.UID]bool
+
+	// pendingAllocationSharingScope identifies the PodGroup whose Pods may
+	// share pending allocations. For Pods outside a PodGroup, it is the Pod UID
+	// and pendingAllocationSharingAllowed is false.
+	pendingAllocationSharingScope   types.UID
+	pendingAllocationSharingAllowed bool
 }
 
 func (d *stateData) Clone() fwk.StateData {
@@ -157,6 +163,13 @@ type informationForClaim struct {
 	// May be set by PreFilter if this allocation was made by a previous Pod's
 	// Reserve but not yet published in PreBind.
 	allocation *resourceapi.AllocationResult
+
+	// pendingAllocation is set in PreFilter when reusing an allocation, or in
+	// Reserve when creating one. pendingAllocationAcquired becomes true only in
+	// Reserve so earlier scheduling failures cannot leak tracker references.
+	pendingAllocation         *pendingAllocationHandle
+	pendingAllocationAcquired bool
+	legacyPendingAllocation   bool
 }
 
 // nodeAllocation holds the allocation results and extended resource claim per node.
@@ -619,6 +632,20 @@ func (pl *DynamicResources) PreFilter(ctx context.Context, state fwk.CycleState,
 		return nil, fwk.NewStatus(fwk.Skip)
 	}
 
+	// A PodGroup UID remains stable across scheduling cycles and therefore can
+	// be used as the sharing boundary for pending allocations. Using the UID,
+	// instead of just the name, prevents sharing with a deleted and recreated
+	// PodGroup.
+	s.pendingAllocationSharingScope = pod.UID
+	podGroup, err := pl.getPodGroupSnapshot(pod)
+	if err != nil {
+		return nil, statusUnschedulable(logger, err.Error())
+	}
+	if podGroup != nil {
+		s.pendingAllocationSharingScope = podGroup.UID
+		s.pendingAllocationSharingAllowed = true
+	}
+
 	// Counts all claims which the scheduler needs to allocate itself.
 	numClaimsToAllocate := 0
 	s.informationsForClaim = make([]informationForClaim, claims.len())
@@ -652,22 +679,43 @@ func (pl *DynamicResources) PreFilter(ctx context.Context, state fwk.CycleState,
 			// we numClaimsToAllocate increment to create an allocator anyway to
 			// signal that some claims need their status updated in PreBind.
 			//
-			// Currently, sharing is limited to a single PodGroup scheduling
-			// cycle. Ungrouped Pods and Pods across different PodGroup
-			// scheduling cycles cannot share claims with pending allocations
-			// for now to limit potential impact outside of the alpha
-			// GenericWorkload feature gate. Sharing claims this way more
-			// broadly may have benefits:
-			// https://github.com/kubernetes/kubernetes/issues/137932
+			// Inspecting is deliberately read-only. Reserve atomically validates
+			// the handle and acquires the Pod's reference after a node has been
+			// selected. Acquiring here would leak a reference whenever Filter or
+			// another plugin rejects the Pod before Reserve.
+			if tracker, ok := pl.draManager.ResourceClaims().(scopedPendingAllocationTracker); ok {
+				handle, err := tracker.inspectPendingAllocation(claim.UID, s.pendingAllocationSharingScope, pod.UID)
+				switch {
+				case errors.Is(err, errPendingAllocationNotShareable):
+					return nil, statusUnschedulable(logger, fmt.Sprintf("resource claim %s is in the process of being allocated", klog.KObj(claim)))
+				case err != nil:
+					return nil, statusError(logger, err)
+				case handle != nil:
+					s.informationsForClaim[index].pendingAllocation = handle
+					s.informationsForClaim[index].allocation = handle.allocation
+					nodeSelector, err := nodeSelectorFromAllocation(handle.allocation)
+					if err != nil {
+						return nil, statusError(logger, err)
+					}
+					s.informationsForClaim[index].availableOnNodes = nodeSelector
+					logger.V(5).Info("Reusing pending allocation", "pod", klog.KObj(pod), "resourceclaim", klog.KObj(claim), "uid", claim.UID, "allocation", klog.Format(handle.allocation))
+					continue
+				}
+			}
+
+			// Keep compatibility with ResourceClaimTracker implementations which
+			// do not support scoped acquisition, and with legacy pending entries
+			// created before scoped tracking was enabled.
 			if podGroupState != nil && podGroupState.pendingAllocations[claim.UID] != nil {
 				if pendingAllocation := pl.draManager.ResourceClaims().GetPendingAllocation(claim.UID); pendingAllocation != nil {
+					s.informationsForClaim[index].legacyPendingAllocation = true
 					s.informationsForClaim[index].allocation = pendingAllocation
 					nodeSelector, err := nodeSelectorFromAllocation(pendingAllocation)
 					if err != nil {
 						return nil, statusError(logger, err)
 					}
 					s.informationsForClaim[index].availableOnNodes = nodeSelector
-					logger.V(5).Info("reusing pending allocation", "pod", klog.KObj(pod), "resourceclaim", klog.KObj(claim), "uid", claim.UID, "allocation", klog.Format(pendingAllocation))
+					logger.V(5).Info("Reusing legacy pending allocation", "pod", klog.KObj(pod), "resourceclaim", klog.KObj(claim), "uid", claim.UID, "allocation", klog.Format(pendingAllocation))
 					continue
 				}
 			}
@@ -733,20 +781,13 @@ func (pl *DynamicResources) PreFilter(ctx context.Context, state fwk.CycleState,
 				allocation = s.informationsForClaim[index].allocation
 			}
 			if allocation != nil {
-				isMapped := false
-				for _, result := range allocation.Devices.Results {
-					device, err := getDeviceFromManager(pl.draManager, &result)
-					if err == nil && device != nil && device.NodeAllocatableResources != nil {
-						for _, mapping := range device.NodeAllocatableResources {
-							if mapping.Mapping != nil {
-								isMapped = true
-								break
-							}
-						}
-					}
-					if isMapped {
-						break
-					}
+				isMapped, err := pl.allocationHasNodeAllocatableMappedDevice(allocation)
+				if err != nil {
+					// Unknown must be treated as mapped for sharing. Scheduling may
+					// still continue, but two Pods must not consume the same mapped
+					// node-allocatable resource while ResourceSlice state is stale.
+					isMapped = true
+					logger.V(5).Info("Unable to determine whether pending allocation has mapped devices; disabling sharing", "pod", klog.KObj(pod), "resourceclaim", klog.KObj(claim), "err", err)
 				}
 				s.claimHasNodeAllocatableMappedDevice[claim.UID] = isMapped
 			}
@@ -1517,6 +1558,20 @@ func (pl *DynamicResources) Reserve(ctx context.Context, cs fwk.CycleState, pod 
 
 	// Prepare allocation of claims handled by the schedulder.
 	if state.allocator != nil {
+		scopedTracker, supportsScopedTracking := pl.draManager.ResourceClaims().(scopedPendingAllocationTracker)
+		acquiredThisCall := make([]int, 0, numClaimsToAllocate)
+		legacySignaledThisCall := make([]types.UID, 0, numClaimsToAllocate)
+		rollbackPendingAllocations := func() {
+			for _, index := range acquiredThisCall {
+				information := &state.informationsForClaim[index]
+				scopedTracker.releasePendingAllocation(information.pendingAllocation, pod.UID)
+				information.pendingAllocationAcquired = false
+			}
+			for _, claimUID := range legacySignaledThisCall {
+				pl.draManager.ResourceClaims().MaybeRemoveClaimPendingAllocation(claimUID, false)
+			}
+		}
+
 		// Entries in these two slices match each other.
 		allocations, ok := state.nodeAllocations[nodeName]
 		if !ok || len(allocations.allocationResults) == 0 {
@@ -1541,10 +1596,32 @@ func (pl *DynamicResources) Reserve(ctx context.Context, cs fwk.CycleState, pod 
 		for index, claim := range state.claims.toAllocate() {
 			// The index returned is the original index in the underlying claim store, it
 			// may not be sequentially numbered (e.g. 0, 1, 2 ...).
+			isExtendedResourceClaim := claim == extendedResourceClaim
 			allocation := &allocations.allocationResults[allocIndex]
-			state.informationsForClaim[index].allocation = allocation
+			information := &state.informationsForClaim[index]
+			information.allocation = allocation
 
-			if claim == extendedResourceClaim {
+			if information.pendingAllocation != nil && supportsScopedTracking {
+				allocation, err = scopedTracker.acquirePendingAllocation(information.pendingAllocation, state.pendingAllocationSharingScope, pod.UID)
+				if err != nil {
+					rollbackPendingAllocations()
+					return statusError(logger, fmt.Errorf("pending allocation for claim %s changed before Reserve: %w", claim.Name, err))
+				}
+				information.allocation = allocation
+				information.pendingAllocationAcquired = true
+				acquiredThisCall = append(acquiredThisCall, index)
+				allocIndex++
+
+				if podGroupState != nil {
+					if _, ok := podGroupState.pendingAllocations[claim.UID]; !ok {
+						podGroupState.pendingAllocations[claim.UID] = sets.New[types.UID]()
+					}
+					podGroupState.pendingAllocations[claim.UID].Insert(pod.UID)
+				}
+				continue
+			}
+
+			if isExtendedResourceClaim {
 				// replace the special claim template for extended
 				// resource backed by DRA with the real instantiated claim.
 				claim = allocations.extendedResourceClaim
@@ -1558,9 +1635,32 @@ func (pl *DynamicResources) Reserve(ctx context.Context, cs fwk.CycleState, pod 
 				claim.Finalizers = append(claim.Finalizers, resourceapi.Finalizer)
 			}
 			claim.Status.Allocation = allocation
-			err := pl.draManager.ResourceClaims().SignalClaimPendingAllocation(claim.UID, claim)
-			if err != nil {
-				return statusError(logger, fmt.Errorf("internal error, couldn't signal allocation for claim %s: %w", claim.Name, err))
+			if supportsScopedTracking && !isExtendedResourceClaim && !information.legacyPendingAllocation {
+				mapped := false
+				if pl.fts.EnableDRANodeAllocatableResources {
+					mapped, err = pl.allocationHasNodeAllocatableMappedDevice(allocation)
+					if err != nil {
+						// Failure to resolve the device must disable sharing, but it
+						// must not turn a successful allocation into a scheduling error.
+						mapped = true
+						logger.V(5).Info("Unable to determine whether allocation has mapped devices; disabling sharing", "pod", klog.KObj(pod), "resourceclaim", klog.KObj(claim), "err", err)
+					}
+				}
+				handle, err := scopedTracker.signalScopedClaimPendingAllocation(claim.UID, claim, state.pendingAllocationSharingScope, pod.UID, state.pendingAllocationSharingAllowed && !mapped)
+				if err != nil {
+					rollbackPendingAllocations()
+					return statusError(logger, fmt.Errorf("couldn't signal pending allocation for claim %s: %w", claim.Name, err))
+				}
+				information.pendingAllocation = handle
+				information.pendingAllocationAcquired = true
+				acquiredThisCall = append(acquiredThisCall, index)
+			} else {
+				err := pl.draManager.ResourceClaims().SignalClaimPendingAllocation(claim.UID, claim)
+				if err != nil {
+					rollbackPendingAllocations()
+					return statusError(logger, fmt.Errorf("internal error, couldn't signal allocation for claim %s: %w", claim.Name, err))
+				}
+				legacySignaledThisCall = append(legacySignaledThisCall, claim.UID)
 			}
 			logger.V(5).Info("Reserved resource in allocation result", "claim", klog.KObj(claim), "uid", claim.UID, "resourceVersion", claim.ResourceVersion, "allocation", klog.Format(allocation))
 			allocIndex++
@@ -1598,22 +1698,28 @@ func (pl *DynamicResources) Unreserve(ctx context.Context, cs fwk.CycleState, po
 	logger := klog.FromContext(ctx)
 
 	// we process user claims here first, extendedResourceClaim if any is handled below.
-	for _, claim := range state.claims.allUserClaims() {
+	for index, claim := range state.claims.allUserClaims() {
 		// If allocation was in-flight, then it might not be anymore if no pods
-		// still need the pending allocation. If the allocation was removed from
-		// in-flight, we need to revert the claim object in the assume cache to
-		// what it was before. The allocation is not removed until the last Pod
-		// sharing it is Bound or Unreserved.
-		if deleted := pl.draManager.ResourceClaims().MaybeRemoveClaimPendingAllocation(claim.UID, false); deleted {
+		// still need the pending allocation. Scoped tracking releases this Pod's
+		// identity exactly once. A published allocation must remain assumed even
+		// when a later PreBind step fails and this is the last sharer.
+		information := &state.informationsForClaim[index]
+		deleted := false
+		if tracker, ok := pl.draManager.ResourceClaims().(scopedPendingAllocationTracker); ok && information.pendingAllocationAcquired {
+			release := tracker.releasePendingAllocation(information.pendingAllocation, pod.UID)
+			deleted = release.deleted
+			information.pendingAllocationAcquired = false
+		} else if information.pendingAllocation == nil {
+			// Compatibility path for legacy tracker implementations and pending
+			// allocations recorded before scoped tracking.
+			deleted = pl.draManager.ResourceClaims().MaybeRemoveClaimPendingAllocation(claim.UID, false)
+			if deleted {
+				pl.draManager.ResourceClaims().AssumedClaimRestore(claim.Namespace, claim.Name)
+			}
+		}
+		if deleted {
 			logger.V(5).Info("Released resource in allocation result", "claim", klog.KObj(claim), "uid", claim.UID, "resourceVersion", claim.ResourceVersion, "allocation", klog.Format(claim.Status.Allocation))
-			pl.draManager.ResourceClaims().AssumedClaimRestore(claim.Namespace, claim.Name)
 
-			// If we are currently asynchronously Binding Pods in a PodGroup,
-			// then the pendingAllocations set does not need to be updated. New
-			// PodGroup scheduling cycles will start with an empty set and not
-			// share pending allocations started in *this* cycle until Unreserve
-			// completes for all the Pods sharing that pending allocation and
-			// they can be Reserved again in another cycle.
 			if podGroupState != nil {
 				delete(podGroupState.pendingAllocations, claim.UID)
 			}
@@ -1806,7 +1912,8 @@ func (pl *DynamicResources) bindClaim(ctx context.Context, state *stateData, pod
 	logger := klog.FromContext(ctx)
 	claim := state.claims.get(index)
 	binding := state.claims.getBinding(index, pod)
-	allocation := state.informationsForClaim[index].allocation
+	information := &state.informationsForClaim[index]
+	allocation := information.allocation
 	isExtendedResourceClaim := false
 	if claim == state.claims.extendedResourceClaim() {
 		// extended resource requests satisfied by device plugin
@@ -1848,7 +1955,15 @@ func (pl *DynamicResources) bindClaim(ctx context.Context, state *stateData, pod
 	// only when that will return a successful status. It removes any
 	// allocations from in-flight which were bound successfully.
 	prebindSuccessCleanup := func() {
-		if allocation != nil {
+		if tracker, ok := pl.draManager.ResourceClaims().(scopedPendingAllocationTracker); ok && information.pendingAllocationAcquired {
+			release := tracker.releasePendingAllocation(information.pendingAllocation, pod.UID)
+			information.pendingAllocationAcquired = false
+			if release.deleted && podGroupState != nil {
+				delete(podGroupState.pendingAllocations, information.pendingAllocation.claimUID)
+			}
+			return
+		}
+		if allocation != nil && information.pendingAllocation == nil {
 			for _, claimUID := range claimUIDs {
 				if deleted := pl.draManager.ResourceClaims().MaybeRemoveClaimPendingAllocation(claimUID, true); deleted {
 					// If we are currently asynchronously Binding Pods in a
@@ -1910,25 +2025,36 @@ func (pl *DynamicResources) bindClaim(ctx context.Context, state *stateData, pod
 		// Do we need to store an allocation result from Reserve?
 		if allocation != nil {
 			if claim.Status.Allocation != nil {
-				return fmt.Errorf("claim %s got allocated elsewhere in the meantime", klog.KObj(claim))
-			}
-
-			// The finalizer needs to be added in a normal update.
-			// If we were interrupted in the past, it might already be set and we simply continue.
-			if !slices.Contains(claim.Finalizers, resourceapi.Finalizer) {
-				claim.Finalizers = append(claim.Finalizers, resourceapi.Finalizer)
-				updatedClaim, err := pl.clientset.ResourceV1().ResourceClaims(claim.Namespace).Update(ctx, claim, metav1.UpdateOptions{})
-				if err != nil {
-					return fmt.Errorf("add finalizer to claim %s: %w", klog.KObj(claim), err)
+				if information.pendingAllocation == nil || !pendingAllocationMatches(allocation, claim.Status.Allocation) {
+					return fmt.Errorf("claim %s got allocated elsewhere in the meantime", klog.KObj(claim))
 				}
-				claim = updatedClaim
+			} else {
+				// The finalizer needs to be added in a normal update.
+				// If we were interrupted in the past, it might already be set and we simply continue.
+				if !slices.Contains(claim.Finalizers, resourceapi.Finalizer) {
+					claim.Finalizers = append(claim.Finalizers, resourceapi.Finalizer)
+					updatedClaim, err := pl.clientset.ResourceV1().ResourceClaims(claim.Namespace).Update(ctx, claim, metav1.UpdateOptions{})
+					if err != nil {
+						return fmt.Errorf("add finalizer to claim %s: %w", klog.KObj(claim), err)
+					}
+					claim = updatedClaim
+				}
+				// Scoped allocations may be read by another scheduling cycle. Do
+				// not mutate them while setting AllocationTimestamp below.
+				if information.pendingAllocation != nil {
+					claim.Status.Allocation = allocation.DeepCopy()
+				} else {
+					claim.Status.Allocation = allocation
+				}
 			}
-			claim.Status.Allocation = allocation
 		}
 
 		// We can simply try to add the pod here without checking
 		// preconditions. The apiserver will tell us with a
 		// non-conflict error if this isn't possible.
+		if slices.Contains(claim.Status.ReservedFor, binding) {
+			return nil
+		}
 		claim.Status.ReservedFor = append(claim.Status.ReservedFor, binding)
 		if pl.fts.EnableDRADeviceBindingConditions &&
 			pl.fts.EnableDRAResourceClaimDeviceStatus {
@@ -1957,6 +2083,9 @@ func (pl *DynamicResources) bindClaim(ctx context.Context, state *stateData, pod
 	if retryErr != nil {
 		return nil, nil, retryErr
 	}
+	if tracker, ok := pl.draManager.ResourceClaims().(scopedPendingAllocationTracker); ok && information.pendingAllocation != nil && claim.Status.Allocation != nil {
+		tracker.markPendingAllocationPublished(information.pendingAllocation, claim)
+	}
 
 	logger.V(5).Info("reserved", "pod", klog.KObj(pod), "node", nodeName, "resourceclaim", klog.Format(claim))
 
@@ -1984,6 +2113,19 @@ func allocationResultRequiresDRAOptionalNodeOperations(alloc *resourceapi.Alloca
 		}
 	}
 	return false
+}
+
+// pendingAllocationMatches ignores AllocationTimestamp because it is added by
+// the first successful PreBind API update and is not part of device selection.
+func pendingAllocationMatches(a, b *resourceapi.AllocationResult) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	a = a.DeepCopy()
+	b = b.DeepCopy()
+	a.AllocationTimestamp = nil
+	b.AllocationTimestamp = nil
+	return apiequality.Semantic.DeepEqual(a, b)
 }
 
 // isClaimReadyForBinding checks whether a given resource claim is

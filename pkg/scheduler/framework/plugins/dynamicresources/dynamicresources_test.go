@@ -57,6 +57,7 @@ import (
 	"k8s.io/component-base/metrics/testutil"
 	"k8s.io/component-helpers/nodedeclaredfeatures/features/draoptionalnodeoperations"
 	"k8s.io/dynamic-resource-allocation/deviceclass/extendedresourcecache"
+	"k8s.io/dynamic-resource-allocation/resourceclaim"
 	resourceslicetracker "k8s.io/dynamic-resource-allocation/resourceslice/tracker"
 	"k8s.io/dynamic-resource-allocation/structured"
 	"k8s.io/dynamic-resource-allocation/structured/schedulerapi"
@@ -1341,6 +1342,163 @@ func TestPreFilterReusesPendingAllocationWithNilNodeSelector(t *testing.T) {
 	if pluginState.informationsForClaim[0].availableOnNodes != nil {
 		t.Errorf("availableOnNodes should be nil, got %v", pluginState.informationsForClaim[0].availableOnNodes)
 	}
+	status := testCtx.p.Filter(tCtx, testCtx.state, groupedPodWithClaimName, nodeInfo)
+	if !status.IsSuccess() {
+		t.Fatalf("Filter status: %v", status)
+	}
+	status = testCtx.p.Reserve(tCtx, testCtx.state, groupedPodWithClaimName, workerNode.Name)
+	if !status.IsSuccess() {
+		t.Fatalf("Reserve status: %v", status)
+	}
+	testCtx.p.Unreserve(tCtx, testCtx.state, groupedPodWithClaimName, workerNode.Name)
+}
+
+func TestPendingAllocationSharedAcrossPodGroupCycles(t *testing.T) {
+	tCtx := ktesting.Init(t)
+	featuregatetesting.SetFeatureGatesDuringTest(tCtx, utilfeature.DefaultFeatureGate, featuregatetesting.FeatureOverrides{
+		features.DRAWorkloadResourceClaims: true,
+		features.GenericWorkload:           true,
+	})
+
+	feats := feature.Features{
+		EnableDRAAdminAccess:               true,
+		EnableDRADeviceBindingConditions:   true,
+		EnableDRAResourceClaimDeviceStatus: true,
+		EnableDRASchedulerFilterTimeout:    true,
+		EnableDynamicResourceAllocation:    true,
+		EnableDRAWorkloadResourceClaims:    true,
+	}
+	testCtx := setup(tCtx, nil, []*v1.Node{workerNode}, []*resourceapi.ResourceClaim{pendingPodGroupClaim}, []*resourceapi.DeviceClass{deviceClass}, []*schedulingapi.PodGroup{podGroupWithClaimName}, []apiruntime.Object{workerNodeSlice}, feats, false, nil)
+
+	pendingClaim, err := testCtx.draManager.ResourceClaims().Get(namespace, claimName)
+	tCtx.ExpectNoError(err)
+	allocatedClaim := pendingClaim.DeepCopy()
+	allocatedClaim.Status.Allocation = allocationResult.DeepCopy()
+	ownerPodUID := types.UID("owner-pod")
+	ownerHandle, err := testCtx.draManager.resourceClaimTracker.signalScopedClaimPendingAllocation(allocatedClaim.UID, allocatedClaim, podGroupWithClaimName.UID, ownerPodUID, true)
+	tCtx.ExpectNoError(err)
+
+	// This is a new PodGroup scheduling cycle: its CycleState has no record of
+	// the allocation created by the prior cycle.
+	pod := groupedPodWithClaimName.DeepCopy()
+	pod.Name = "pod-from-next-cycle"
+	pod.UID = types.UID("pod-from-next-cycle")
+	podGroupCycleState := framework.NewCycleState()
+	cycleState := framework.NewCycleState()
+	cycleState.SetPodGroupSchedulingCycle(podGroupCycleState)
+
+	nodeInfo := framework.NewNodeInfo()
+	nodeInfo.SetNode(workerNode)
+	_, status := testCtx.p.PreFilter(tCtx, cycleState, pod, []fwk.NodeInfo{nodeInfo})
+	if !status.IsSuccess() {
+		tCtx.Fatalf("PreFilter: %v", status)
+	}
+	state, err := getStateData(cycleState)
+	tCtx.ExpectNoError(err)
+	require.NotNil(tCtx, state.informationsForClaim[0].pendingAllocation)
+	// Inspecting in PreFilter is read-only.
+	assert.Len(tCtx, testCtx.draManager.resourceClaimTracker.inFlightAllocations[allocatedClaim.UID].podSharers, 1)
+
+	status = testCtx.p.Filter(tCtx, cycleState, pod, nodeInfo)
+	if !status.IsSuccess() {
+		tCtx.Fatalf("Filter: %v", status)
+	}
+	status = testCtx.p.Reserve(tCtx, cycleState, pod, workerNode.Name)
+	if !status.IsSuccess() {
+		tCtx.Fatalf("Reserve: %v", status)
+	}
+	assert.True(tCtx, state.informationsForClaim[0].pendingAllocationAcquired)
+	assert.Len(tCtx, testCtx.draManager.resourceClaimTracker.inFlightAllocations[allocatedClaim.UID].podSharers, 2)
+
+	testCtx.p.Unreserve(tCtx, cycleState, pod, workerNode.Name)
+	assert.Len(tCtx, testCtx.draManager.resourceClaimTracker.inFlightAllocations[allocatedClaim.UID].podSharers, 1)
+	assert.Contains(tCtx, testCtx.draManager.resourceClaimTracker.inFlightAllocations[allocatedClaim.UID].podSharers, ownerPodUID)
+
+	// A later cycle can acquire the same allocation after the prior follower
+	// unreserved. It may publish the allocation before the original Pod does.
+	publisherPod := groupedPodWithClaimName.DeepCopy()
+	publisherPod.Name = "publisher-from-later-cycle"
+	publisherPod.UID = types.UID("publisher-from-later-cycle")
+	publisherPodGroupCycleState := framework.NewCycleState()
+	publisherCycleState := framework.NewCycleState()
+	publisherCycleState.SetPodGroupSchedulingCycle(publisherPodGroupCycleState)
+	_, status = testCtx.p.PreFilter(tCtx, publisherCycleState, publisherPod, []fwk.NodeInfo{nodeInfo})
+	if !status.IsSuccess() {
+		tCtx.Fatalf("publisher PreFilter: %v", status)
+	}
+	status = testCtx.p.Filter(tCtx, publisherCycleState, publisherPod, nodeInfo)
+	if !status.IsSuccess() {
+		tCtx.Fatalf("publisher Filter: %v", status)
+	}
+	status = testCtx.p.Reserve(tCtx, publisherCycleState, publisherPod, workerNode.Name)
+	if !status.IsSuccess() {
+		tCtx.Fatalf("publisher Reserve: %v", status)
+	}
+	publisherCycleState.SetPodGroupSchedulingCycle(nil)
+	status = testCtx.p.PreBind(tCtx, publisherCycleState, publisherPod, workerNode.Name)
+	if !status.IsSuccess() {
+		tCtx.Fatalf("publisher PreBind: %v", status)
+	}
+
+	inFlight := testCtx.draManager.resourceClaimTracker.inFlightAllocations[allocatedClaim.UID]
+	assert.True(tCtx, inFlight.published)
+	assert.Len(tCtx, inFlight.podSharers, 1)
+	assert.Contains(tCtx, inFlight.podSharers, ownerPodUID)
+	assumedClaim, err := testCtx.draManager.ResourceClaims().Get(namespace, claimName)
+	tCtx.ExpectNoError(err)
+	require.NotNil(tCtx, assumedClaim.Status.Allocation)
+	assert.True(tCtx, resourceclaim.IsReservedForPod(publisherPod, assumedClaim, true))
+	assert.True(tCtx, testCtx.draManager.resourceClaimTracker.releasePendingAllocation(ownerHandle, ownerPodUID).deleted)
+}
+
+func TestUnshareablePendingAllocationRejectedAcrossPodGroupCycles(t *testing.T) {
+	tCtx := ktesting.Init(t)
+	featuregatetesting.SetFeatureGatesDuringTest(tCtx, utilfeature.DefaultFeatureGate, featuregatetesting.FeatureOverrides{
+		features.DRAWorkloadResourceClaims: true,
+		features.GenericWorkload:           true,
+	})
+	feats := feature.Features{
+		EnableDRAAdminAccess:               true,
+		EnableDRADeviceBindingConditions:   true,
+		EnableDRAResourceClaimDeviceStatus: true,
+		EnableDRASchedulerFilterTimeout:    true,
+		EnableDynamicResourceAllocation:    true,
+		EnableDRANodeAllocatableResources:  true,
+		EnableDRAWorkloadResourceClaims:    true,
+	}
+	mappedSlice := workerNodeSlice.DeepCopy()
+	mappedSlice.Spec.Devices[0].NodeAllocatableResources = map[v1.ResourceName]resourceapi.NodeAllocatableResource{
+		v1.ResourceCPU: {Mapping: &resourceapi.NodeAllocatableMapping{}},
+	}
+	testCtx := setup(tCtx, nil, []*v1.Node{workerNode}, []*resourceapi.ResourceClaim{pendingPodGroupClaim}, []*resourceapi.DeviceClass{deviceClass}, []*schedulingapi.PodGroup{podGroupWithClaimName}, []apiruntime.Object{mappedSlice}, feats, false, nil)
+
+	pendingClaim, err := testCtx.draManager.ResourceClaims().Get(namespace, claimName)
+	tCtx.ExpectNoError(err)
+	allocatedClaim := pendingClaim.DeepCopy()
+	allocatedClaim.Status.Allocation = allocationResult.DeepCopy()
+	ownerPodUID := types.UID("owner-pod")
+	// Reserve records node-allocatable mapped allocations as unshareable.
+	mapped, err := testCtx.p.allocationHasNodeAllocatableMappedDevice(allocatedClaim.Status.Allocation)
+	tCtx.ExpectNoError(err)
+	assert.True(tCtx, mapped)
+	ownerHandle, err := testCtx.draManager.resourceClaimTracker.signalScopedClaimPendingAllocation(allocatedClaim.UID, allocatedClaim, podGroupWithClaimName.UID, ownerPodUID, !mapped)
+	tCtx.ExpectNoError(err)
+
+	pod := groupedPodWithClaimName.DeepCopy()
+	pod.Name = "pod-from-next-cycle"
+	pod.UID = types.UID("pod-from-next-cycle")
+	cycleState := framework.NewCycleState()
+	cycleState.SetPodGroupSchedulingCycle(framework.NewCycleState())
+	nodeInfo := framework.NewNodeInfo()
+	nodeInfo.SetNode(workerNode)
+
+	_, status := testCtx.p.PreFilter(tCtx, cycleState, pod, []fwk.NodeInfo{nodeInfo})
+	if !status.IsRejected() {
+		tCtx.Fatalf("PreFilter status = %v, want rejected", status)
+	}
+	assert.Contains(tCtx, status.Message(), "is in the process of being allocated")
+	assert.Len(tCtx, testCtx.draManager.resourceClaimTracker.inFlightAllocations[allocatedClaim.UID].podSharers, 1)
+	assert.True(tCtx, testCtx.draManager.resourceClaimTracker.releasePendingAllocation(ownerHandle, ownerPodUID).deleted)
 }
 
 func TestFilterReusesPendingAllocationRequiresDRAOptionalNodeOperations(t *testing.T) {
@@ -2192,7 +2350,7 @@ func testPlugin(tCtx ktesting.TContext) {
 					inFlightClaims: []metav1.Object{allocatedClaim},
 				},
 				prebind: result{
-					inFlightClaims: []metav1.Object{addAllocationTimestamp(allocatedClaim)},
+					inFlightClaims: []metav1.Object{allocatedClaim},
 					status:         fwk.NewStatus(fwk.Unschedulable, `claim bind error`),
 				},
 				unreserveAfterBindFailure: &result{},

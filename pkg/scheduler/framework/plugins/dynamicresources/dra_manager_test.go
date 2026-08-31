@@ -17,7 +17,9 @@ limitations under the License.
 package dynamicresources
 
 import (
+	"fmt"
 	"maps"
+	"sync"
 	"testing"
 
 	"github.com/onsi/gomega"
@@ -263,4 +265,124 @@ func testMaybeRemoveClaimPendingAllocation(tCtx ktesting.TContext) {
 			tCtx.Expect(c.inFlightAllocations).To(gomega.Equal(test.expectedInFlightAllocations))
 		})
 	}
+}
+
+func TestScopedPendingAllocationLifecycle(t *testing.T) {
+	tCtx := ktesting.Init(t)
+	tracker := newScopedClaimTracker(tCtx)
+	podA := types.UID("pod-a")
+	podB := types.UID("pod-b")
+	podGroup := types.UID("pod-group")
+
+	handleA, err := tracker.signalScopedClaimPendingAllocation(claimUID, allocatedClaim, podGroup, podA, true)
+	tCtx.ExpectNoError(err)
+
+	// Inspect must not acquire a reference. Reserve performs the acquisition.
+	handleB, err := tracker.inspectPendingAllocation(claimUID, podGroup, podB)
+	tCtx.ExpectNoError(err)
+	tCtx.Expect(handleB).NotTo(gomega.BeNil())
+	tCtx.Expect(tracker.inFlightAllocations[claimUID].podSharers).To(gomega.And(gomega.HaveLen(1), gomega.HaveKey(podA)))
+
+	allocation, err := tracker.acquirePendingAllocation(handleB, podGroup, podB)
+	tCtx.ExpectNoError(err)
+	tCtx.Expect(allocation).To(gomega.Equal(allocationResult))
+	tCtx.Expect(tracker.inFlightAllocations[claimUID].podSharers).To(gomega.HaveLen(2))
+
+	_, err = tracker.inspectPendingAllocation(claimUID, types.UID("other-pod-group"), types.UID("pod-c"))
+	tCtx.Expect(err).To(gomega.MatchError(errPendingAllocationNotShareable))
+
+	release := tracker.releasePendingAllocation(handleA, podA)
+	tCtx.Expect(release).To(gomega.Equal(pendingAllocationRelease{}))
+	publishedClaim := allocatedClaim.DeepCopy()
+	publishedClaim.Status.ReservedFor = []resourceapi.ResourceClaimConsumerReference{{Resource: "pods", Name: "pod-b", UID: podB}}
+	tracker.markPendingAllocationPublished(handleB, publishedClaim)
+
+	release = tracker.releasePendingAllocation(handleB, podB)
+	tCtx.Expect(release).To(gomega.Equal(pendingAllocationRelease{deleted: true, published: true}))
+	tCtx.Expect(tracker.inFlightAllocations).To(gomega.BeEmpty())
+	// Release is idempotent.
+	tCtx.Expect(tracker.releasePendingAllocation(handleB, podB)).To(gomega.Equal(pendingAllocationRelease{}))
+}
+
+func TestScopedPendingAllocationNotShareable(t *testing.T) {
+	tCtx := ktesting.Init(t)
+	tracker := newScopedClaimTracker(tCtx)
+	podA := types.UID("pod-a")
+	podGroup := types.UID("pod-group")
+
+	handle, err := tracker.signalScopedClaimPendingAllocation(claimUID, allocatedClaim, podGroup, podA, false)
+	tCtx.ExpectNoError(err)
+	_, err = tracker.inspectPendingAllocation(claimUID, podGroup, types.UID("pod-b"))
+	tCtx.Expect(err).To(gomega.MatchError(errPendingAllocationNotShareable))
+
+	// The creating Pod may acquire the same handle again without adding a
+	// duplicate reference. This makes Reserve retries idempotent.
+	allocation, err := tracker.acquirePendingAllocation(handle, podGroup, podA)
+	tCtx.ExpectNoError(err)
+	tCtx.Expect(allocation).To(gomega.Equal(allocationResult))
+	tCtx.Expect(tracker.inFlightAllocations[claimUID].podSharers).To(gomega.HaveLen(1))
+}
+
+func TestScopedPendingAllocationRejectsStaleHandle(t *testing.T) {
+	tCtx := ktesting.Init(t)
+	tracker := newScopedClaimTracker(tCtx)
+	podA := types.UID("pod-a")
+	podB := types.UID("pod-b")
+	podGroup := types.UID("pod-group")
+
+	handleA, err := tracker.signalScopedClaimPendingAllocation(claimUID, allocatedClaim, podGroup, podA, true)
+	tCtx.ExpectNoError(err)
+	staleHandle, err := tracker.inspectPendingAllocation(claimUID, podGroup, podB)
+	tCtx.ExpectNoError(err)
+	tCtx.Expect(tracker.releasePendingAllocation(handleA, podA).deleted).To(gomega.BeTrue())
+
+	_, err = tracker.signalScopedClaimPendingAllocation(claimUID, allocatedClaim, podGroup, podA, true)
+	tCtx.ExpectNoError(err)
+	_, err = tracker.acquirePendingAllocation(staleHandle, podGroup, podB)
+	tCtx.Expect(err).To(gomega.MatchError(errPendingAllocationChanged))
+}
+
+func TestScopedPendingAllocationConcurrentAcquire(t *testing.T) {
+	tCtx := ktesting.Init(t)
+	tracker := newScopedClaimTracker(tCtx)
+	podGroup := types.UID("pod-group")
+	owner := types.UID("pod-owner")
+
+	_, err := tracker.signalScopedClaimPendingAllocation(claimUID, allocatedClaim, podGroup, owner, true)
+	tCtx.ExpectNoError(err)
+
+	const numSharers = 32
+	var wg sync.WaitGroup
+	errorsCh := make(chan error, numSharers)
+	for i := range numSharers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			podUID := types.UID(fmt.Sprintf("pod-%d", i))
+			handle, err := tracker.inspectPendingAllocation(claimUID, podGroup, podUID)
+			if err == nil {
+				_, err = tracker.acquirePendingAllocation(handle, podGroup, podUID)
+			}
+			if err != nil {
+				errorsCh <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errorsCh)
+	for err := range errorsCh {
+		tCtx.Errorf("acquire pending allocation: %v", err)
+	}
+	tCtx.Expect(tracker.inFlightAllocations[claimUID].podSharers).To(gomega.HaveLen(numSharers + 1))
+}
+
+func newScopedClaimTracker(tCtx ktesting.TContext) *claimTracker {
+	informer := &testInformer{}
+	tracker := &claimTracker{
+		cache:               assumecache.NewAssumeCache(tCtx.Logger(), informer, "", "", nil),
+		inFlightAllocations: make(map[types.UID]inFlightAllocation),
+		logger:              tCtx.Logger(),
+	}
+	informer.add(st.FromResourceClaim(pendingClaim).UID(string(claimUID)).Obj())
+	return tracker
 }
