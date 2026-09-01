@@ -390,6 +390,7 @@ type fakeExtender struct {
 	errProcessPreemption bool
 	supportsPreemption   bool
 	returnsNoVictims     bool
+	victimsToAdd         []*v1.Pod
 }
 
 func newFakeExtender() *fakeExtender {
@@ -416,6 +417,11 @@ func (f *fakeExtender) WithReturnNoVictims(returnsNoVictims bool) *fakeExtender 
 	return f
 }
 
+func (f *fakeExtender) WithVictimsToAdd(victims ...*v1.Pod) *fakeExtender {
+	f.victimsToAdd = victims
+	return f
+}
+
 func (f *fakeExtender) Name() string {
 	return "fakeExtender"
 }
@@ -435,6 +441,19 @@ func (f *fakeExtender) ProcessPreemption(
 		}
 		if f.returnsNoVictims {
 			return map[string]*extenderv1.Victims{"mock": {}}, nil
+		}
+		if len(f.victimsToAdd) != 0 {
+			result := make(map[string]*extenderv1.Victims, len(victims))
+			for nodeName, nodeVictims := range victims {
+				updatedVictims := &extenderv1.Victims{}
+				if nodeVictims != nil {
+					updatedVictims.Pods = append(updatedVictims.Pods, nodeVictims.Pods...)
+					updatedVictims.NumPDBViolations = nodeVictims.NumPDBViolations
+				}
+				updatedVictims.Pods = append(updatedVictims.Pods, f.victimsToAdd...)
+				result[nodeName] = updatedVictims
+			}
+			return result, nil
 		}
 		return victims, nil
 	}
@@ -528,7 +547,7 @@ func TestCallExtenders(t *testing.T) {
 				newFakeExtender().WithSupportsPreemption(true).WithReturnNoVictims(true),
 			},
 			candidates:     makeCandidates(node1Name, victim),
-			wantStatus:     nil,
+			wantStatus:     fwk.AsStatus(fmt.Errorf("expected at least one victim pod on node %q", node1Name)),
 			wantCandidates: []Candidate{},
 		},
 		{
@@ -539,6 +558,16 @@ func TestCallExtenders(t *testing.T) {
 			candidates:     makeCandidates(node1Name),
 			wantStatus:     nil,
 			wantCandidates: []Candidate{},
+		},
+		{
+			name: "later extender adds victims to empty placeholder",
+			extenders: []fwk.Extender{
+				newFakeExtender().WithSupportsPreemption(true),
+				newFakeExtender().WithSupportsPreemption(true).WithVictimsToAdd(victim),
+			},
+			candidates:     makeCandidates(node1Name),
+			wantStatus:     nil,
+			wantCandidates: makeCandidates(node1Name, victim),
 		},
 		{
 			name: "one extender does not support preemption",

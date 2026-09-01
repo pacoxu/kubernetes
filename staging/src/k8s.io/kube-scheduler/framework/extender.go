@@ -66,8 +66,9 @@ type Extender interface {
 	//
 	// A candidate may have an empty victim list. That means in-tree filter plugins already
 	// fit without preempting, but the node is still a preemption candidate so this extender
-	// can add victims for resources it manages, or omit the node. Returning a node with an
-	// empty victim list drops that node; it is not treated as an error.
+	// can add victims for resources it manages. The extender may leave an empty candidate
+	// unchanged for subsequent extenders, or omit the node to reject it. Nodes still having
+	// no victims after all extenders run are dropped from the candidate set.
 	ProcessPreemption(
 		pod *v1.Pod,
 		nodeNameToVictims map[string]*extenderv1.Victims,

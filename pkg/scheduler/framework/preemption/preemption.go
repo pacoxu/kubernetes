@@ -228,8 +228,9 @@ func (ev *Evaluator) findCandidates(ctx context.Context, state fwk.CycleState, a
 // node. In that case, scheduler will find a different host for the preemptor in subsequent scheduling cycles.
 //
 // Candidates may include nodes with an empty victim list so a preempt-capable extender can
-// add victims. An extender that returns a node with no victims (or leaves an empty list
-// unchanged) drops that node; that is not a scheduler error.
+// add victims. An extender may leave such a candidate unchanged for subsequent extenders,
+// or omit the node to reject it. Candidates that still have no victims after all extenders
+// run are dropped.
 func (ev *Evaluator) callExtenders(logger klog.Logger, pod *v1.Pod, candidates []Candidate) ([]Candidate, *fwk.Status) {
 	extenders := ev.Handler.Extenders()
 	nodeLister := ev.Handler.MutableSnapshotSharedLister().NodeInfos()
@@ -247,6 +248,14 @@ func (ev *Evaluator) callExtenders(logger klog.Logger, pod *v1.Pod, candidates [
 		if !extender.SupportsPreemption() || !extender.IsInterested(pod) {
 			continue
 		}
+		// ProcessPreemption implementations may mutate and return victimsMap, so
+		// remember which nodes were placeholders before calling the extender.
+		emptyInputNodes := make(map[string]struct{})
+		for nodeName, victims := range victimsMap {
+			if victims == nil || len(victims.Pods) == 0 {
+				emptyInputNodes[nodeName] = struct{}{}
+			}
+		}
 		nodeNameToVictims, err := extender.ProcessPreemption(pod, victimsMap, nodeLister)
 		if err != nil {
 			if extender.IsIgnorable() {
@@ -258,8 +267,17 @@ func (ev *Evaluator) callExtenders(logger klog.Logger, pod *v1.Pod, candidates [
 		}
 		for nodeName, victims := range nodeNameToVictims {
 			if victims == nil || len(victims.Pods) == 0 {
-				delete(nodeNameToVictims, nodeName)
-				logger.V(2).Info("Dropped node for which the extender didn't report victims", "node", klog.KRef("", nodeName), "extender", extender.Name())
+				if _, wasEmpty := emptyInputNodes[nodeName]; wasEmpty {
+					// Keep placeholders for subsequent extenders. To reject a node,
+					// an extender should omit it from the returned map.
+					continue
+				}
+				if extender.IsIgnorable() {
+					delete(nodeNameToVictims, nodeName)
+					logger.V(2).Info("Ignored node for which the extender didn't report victims", "node", klog.KRef("", nodeName), "extender", extender.Name())
+					continue
+				}
+				return nil, fwk.AsStatus(fmt.Errorf("expected at least one victim pod on node %q", nodeName))
 			}
 		}
 		// Replace victimsMap with new result after preemption. So the
@@ -275,8 +293,7 @@ func (ev *Evaluator) callExtenders(logger klog.Logger, pod *v1.Pod, candidates [
 	var newCandidates []Candidate
 	for nodeName, victims := range victimsMap {
 		if victims == nil || len(victims.Pods) == 0 {
-			// Placeholder candidates (in-tree filters needed no victims) that
-			// extenders did not fill in are not executable preemption.
+			logger.V(2).Info("Dropped node because no preemption extender reported victims", "node", klog.KRef("", nodeName))
 			continue
 		}
 		newCandidates = append(newCandidates, &candidate{
