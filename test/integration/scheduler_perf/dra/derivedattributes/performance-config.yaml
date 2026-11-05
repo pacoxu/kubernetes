@@ -1,6 +1,11 @@
-# match_fast and match_empty_500nodes from ../performance-config.yaml.
-# matchAttribute names derivedPciRoot, computed from the published
-# resource.kubernetes.io/pciRoot and not present on the device.
+# Pair physical matchAttribute (DRADerivedAttributes off, the alpha default)
+# with the same match expressed as a derived attribute (gate on, the beta
+# default). The two schedules allocate the same devices; the gap is the cost
+# of evaluating derived attributes.
+#
+# match_*_compare is the smaller steady-state pair (performance+short).
+# match_physical_500nodes / match_empty_500nodes is the same pair at the
+# scale used by ci-benchmark-scheduler-perf.
 - name: SchedulingWithResourceClaimTemplate
   featureGates:
     DRADerivedAttributes: true
@@ -31,9 +36,7 @@
       numRequests: $numRequests|1
       selectors: $selectors|
       constraints: $constraints|
-      derivedAttributes:
-      - name: test-driver.cdi.k8s.io/derivedPciRoot
-        expression: device.attributes["resource.kubernetes.io"].pciRoot
+      derivedAttributes: $derivedAttributes|
   - opcode: createPods
     namespace: test
     countParam: $measurePods
@@ -55,6 +58,56 @@
       numPCIRoots: 2
       constraints:
       - matchAttribute: test-driver.cdi.k8s.io/derivedPciRoot
+      derivedAttributes:
+      - name: test-driver.cdi.k8s.io/derivedPciRoot
+        expression: device.attributes["resource.kubernetes.io"].pciRoot
+  - name: match_physical_compare
+    # Gate off: same pciRoot match, no derived attribute CEL.
+    featureGates:
+      DRADerivedAttributes: false
+    labels: [performance, short]
+    params:
+      nodesWithDRA: 20
+      nodesWithoutDRA: 0
+      initClaims: 0
+      measurePods: 10
+      steadyState: true
+      duration: 10s
+      numRequests: 5
+      numPCIRoots: 2
+      constraints:
+      - matchAttribute: resource.kubernetes.io/pciRoot
+  - name: match_derived_compare
+    labels: [performance, short]
+    params:
+      nodesWithDRA: 20
+      nodesWithoutDRA: 0
+      initClaims: 0
+      measurePods: 10
+      steadyState: true
+      duration: 10s
+      numRequests: 5
+      numPCIRoots: 2
+      constraints:
+      - matchAttribute: test-driver.cdi.k8s.io/derivedPciRoot
+      derivedAttributes:
+      - name: test-driver.cdi.k8s.io/derivedPciRoot
+        expression: device.attributes["resource.kubernetes.io"].pciRoot
+  - name: match_physical_500nodes
+    featureGates:
+      DRADerivedAttributes: false
+    labels: [performance]
+    params:
+      nodesWithDRA: 500
+      nodesWithoutDRA: 0
+      initClaims: 0
+      measurePods: 10
+      steadyState: true
+      duration: 10s
+      numRequests: 5
+      numPCIRoots: 2
+      constraints:
+      - matchAttribute: resource.kubernetes.io/pciRoot
   - name: match_empty_500nodes
     labels: [performance]
     params:
@@ -68,3 +121,6 @@
       numPCIRoots: 2
       constraints:
       - matchAttribute: test-driver.cdi.k8s.io/derivedPciRoot
+      derivedAttributes:
+      - name: test-driver.cdi.k8s.io/derivedPciRoot
+        expression: device.attributes["resource.kubernetes.io"].pciRoot
