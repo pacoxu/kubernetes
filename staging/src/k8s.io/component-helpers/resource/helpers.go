@@ -184,6 +184,19 @@ func effectivePodLevelResources(pod *v1.Pod, spec v1.ResourceList, statuses ...v
 	if IsPodResizeInfeasible(pod) {
 		spec = nil
 	}
+	// Pod-level status is produced by PodRequests/PodLimits, so it already includes
+	// RuntimeClass overhead. Strip it before max so status stays comparable with spec
+	// and callers add overhead once.
+	if len(pod.Spec.Overhead) > 0 {
+		for i, status := range statuses {
+			if len(status) == 0 {
+				continue
+			}
+			status = status.DeepCopy()
+			removePodOverhead(status, pod.Spec.Overhead)
+			statuses[i] = status
+		}
+	}
 	return max(spec, statuses...)
 }
 
@@ -313,18 +326,18 @@ func AggregateContainerRequests(pod *v1.Pod, opts PodResourcesOptions) v1.Resour
 			// DRA values are not added to allocatedReqs and actuatedReqs because
 			// 1. Kubelet adds DRA allocations when setting pod.Status.AllocatedResources.
 			// 2. Kubelet adds DRA allocations when configuring pod-level cgroups. Since pod.Status.Resources.Requests is read from cgroup settings, it already contains DRA values.
+			addResourceList(reqs, effectivePodLevelResources(pod, specReqs, actuatedReqs, allocatedReqs))
 		} else {
 			// DRA allocations are added to allocatedReqs here because Kubelet does not include DRA in pod.Status.ContainerStatuses[].AllocatedResources. Adding them prevents under-reporting.
 			// This is a temporary fallback until InPlacePodLevelResourcesVerticalScaling is Beta/GA on all nodes and pod-level status fields which natively include DRA are always available.
 			allocatedReqs = aggregateContainerResourcesByFn(pod, opts, containerAllocatedRequests)
 			addDRANodeAllocatableClaimResources(allocatedReqs, pod, opts)
 			actuatedReqs = aggregateContainerResourcesByFn(pod, opts, containerActuatedRequests)
-		}
-
-		if isResizeInfeasible {
-			addResourceList(reqs, max(actuatedReqs, allocatedReqs))
-		} else {
-			addResourceList(reqs, max(specReqs, actuatedReqs, allocatedReqs))
+			if isResizeInfeasible {
+				addResourceList(reqs, max(actuatedReqs, allocatedReqs))
+			} else {
+				addResourceList(reqs, max(specReqs, actuatedReqs, allocatedReqs))
+			}
 		}
 	}
 
@@ -432,18 +445,35 @@ func AggregateContainerLimits(pod *v1.Pod, opts PodResourcesOptions) v1.Resource
 		if opts.InPlacePodLevelResourcesVerticalScalingEnabled && pod.Status.Resources != nil && pod.Status.Resources.Limits != nil {
 			actuatedLimits = pod.Status.Resources.Limits
 			// Kubelet includes DRA values when populating pod limits. Since pod.Status.Resources.Limits is updated based on cgroup settings, it already contains DRA values, so we should not add them again here.
+			addResourceList(limits, effectivePodLevelResources(pod, specLimits, actuatedLimits))
 		} else {
 			actuatedLimits = aggregateContainerResourcesByFn(pod, opts, containerActuatedLimits)
 			// Kubelet considers DRA values while updating container limits. We should not be adding it here again.
-		}
-
-		if isResizeInfeasible {
-			addResourceList(limits, actuatedLimits)
-		} else {
-			addResourceList(limits, max(specLimits, actuatedLimits))
+			if isResizeInfeasible {
+				addResourceList(limits, actuatedLimits)
+			} else {
+				addResourceList(limits, max(specLimits, actuatedLimits))
+			}
 		}
 	}
 	return limits
+}
+
+// removePodOverhead subtracts overhead from list in place. Zero or negative
+// results are dropped (entry was only overhead, or never included it).
+func removePodOverhead(list, overhead v1.ResourceList) {
+	for name, overheadQty := range overhead {
+		qty, ok := list[name]
+		if !ok {
+			continue
+		}
+		qty.Sub(overheadQty)
+		if qty.Sign() <= 0 {
+			delete(list, name)
+			continue
+		}
+		list[name] = qty
+	}
 }
 
 // addResourceList adds the resources in newList to list.
